@@ -30,8 +30,18 @@
     S.emit('sync', { state: s, error: lastError, at: lastSyncAt });
   }
 
+  /* 配置归一化：repo/branch/path 留空时回落到默认值（默认仓库 GuoxinL/workbench-data） */
+  function normCfg(c) {
+    const D = S.DEFAULT_CFG || {};
+    const n = Object.assign({}, c || S.cfg);
+    if (!n.repo || !String(n.repo).trim()) n.repo = D.repo || '';
+    if (!n.branch || !String(n.branch).trim()) n.branch = D.branch || 'main';
+    if (!n.path || !String(n.path).trim()) n.path = D.path || 'data/workbench.json';
+    return n;
+  }
+
   function cfgValid(c) {
-    c = c || S.cfg;
+    c = normCfg(c || S.cfg);
     return !!(c.enabled && c.repo && /^[^/\s]+\/[^/\s]+$/.test(c.repo.trim()) && c.token && c.path);
   }
 
@@ -139,7 +149,7 @@
 
   /* ---------- 核心：一次完整同步（不含并发控制） ---------- */
   async function runSync(opts) {
-    const c = S.cfg;
+    const c = normCfg(S.cfg);
     setState('syncing');
 
     try {
@@ -240,6 +250,7 @@
 
   /* ---------- 连接测试 ---------- */
   async function test(c) {
+    c = normCfg(c);
     if (!/^[^/\s]+\/[^/\s]+$/.test((c.repo || '').trim())) {
       return { ok: false, msg: '仓库格式应为 owner/repo' };
     }
@@ -271,7 +282,7 @@
 
   /* ---------- 逐项诊断：把「同步失败」拆成可定位的步骤 ---------- */
   async function diagnose(c, onStep) {
-    c = c || S.cfg;
+    c = normCfg(c || S.cfg);
     const out = [];
     const step = (name, ok, msg) => {
       const it = { name, ok, msg };
