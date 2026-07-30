@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#ffffff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>个人工作台</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+</head>
+<body>
+
+<!-- ============ 顶部栏 ============ -->
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">W</span>
+    <span class="brand-text">工作台</span>
+  </div>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-view="todos">待办</button>
+    <button class="tab" data-view="notes">笔记</button>
+    <button class="tab" data-view="graph">图谱</button>
+  </nav>
+
+  <div class="topbar-right">
+    <button class="sync-chip" id="syncChip" title="点击立即同步">
+      <span class="sync-dot" id="syncDot"></span>
+      <span class="sync-text" id="syncText">本地</span>
+    </button>
+    <button class="icon-btn" id="btnSettings" title="同步设置">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<main class="stage">
+
+  <!-- ============ 待办视图 ============ -->
+  <section class="view active" id="view-todos">
+    <div class="toolbar">
+      <div class="composer" id="composer">
+        <input type="text" id="todoInput" class="composer-input" placeholder="添加一条待办，回车创建…" autocomplete="off">
+        <div class="swatches" id="composerSwatches"></div>
+        <button class="btn primary" id="btnAddTodo">添加</button>
+      </div>
+      <div class="filters">
+        <div class="seg" id="statusFilter">
+          <button class="seg-btn active" data-status="all">全部</button>
+          <button class="seg-btn" data-status="todo">待办</button>
+          <button class="seg-btn" data-status="doing">进行中</button>
+          <button class="seg-btn" data-status="done">已完成</button>
+        </div>
+        <div class="color-filter" id="colorFilter"></div>
+        <input type="search" id="todoSearch" class="search" placeholder="搜索待办…">
+      </div>
+    </div>
+
+    <div class="board" id="board"></div>
+  </section>
+
+  <!-- ============ 笔记视图 ============ -->
+  <section class="view" id="view-notes">
+    <div class="notes-layout" id="notesLayout">
+      <aside class="notes-side">
+        <div class="side-head">
+          <input type="search" id="noteSearch" class="search" placeholder="搜索笔记…">
+          <button class="btn primary sm" id="btnAddNote">新建</button>
+        </div>
+        <ul class="note-list" id="noteList"></ul>
+      </aside>
+
+      <div class="note-main" id="noteMain">
+        <div class="note-empty" id="noteEmpty">
+          <div class="empty-art">📝</div>
+          <p>选择左侧笔记开始查阅，或新建一篇。</p>
+          <p class="hint">在正文里输入 <code>[[</code> 可引用其它笔记，自动建立双向链接。</p>
+        </div>
+
+        <article class="note-editor" id="noteEditor" hidden>
+          <div class="note-head">
+            <button class="icon-btn back-btn" id="btnBackList" title="返回列表">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <input type="text" id="noteTitle" class="note-title-input" placeholder="笔记标题">
+            <div class="seg small" id="noteMode">
+              <button class="seg-btn active" data-mode="read">阅读</button>
+              <button class="seg-btn" data-mode="edit">编辑</button>
+            </div>
+            <button class="icon-btn danger" id="btnDeleteNote" title="删除笔记">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+            </button>
+          </div>
+
+          <div class="note-meta" id="noteMeta"></div>
+
+          <div class="note-body">
+            <div class="editor-wrap" id="editorWrap" hidden>
+              <textarea id="noteContent" class="note-textarea" spellcheck="false"
+                placeholder="支持 Markdown。输入 [[ 引用其它笔记…"></textarea>
+              <div class="autocomplete" id="acPanel" hidden></div>
+            </div>
+            <div class="preview" id="notePreview"></div>
+          </div>
+
+          <div class="links-panel">
+            <div class="links-col">
+              <h4><span class="link-ic out">↗</span> 引用了 <em id="outCount">0</em></h4>
+              <ul id="outLinks" class="link-list"></ul>
+            </div>
+            <div class="links-col">
+              <h4><span class="link-ic in">↙</span> 被引用 <em id="inCount">0</em></h4>
+              <ul id="inLinks" class="link-list"></ul>
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 图谱视图 ============ -->
+  <section class="view" id="view-graph">
+    <div class="graph-head">
+      <span class="graph-tip">笔记关联图谱 · 点击节点跳转笔记</span>
+      <button class="btn ghost sm" id="btnRelayout">重新布局</button>
+    </div>
+    <div class="graph-wrap" id="graphWrap">
+      <svg id="graphSvg"></svg>
+      <div class="graph-empty" id="graphEmpty" hidden>还没有笔记之间的引用关系</div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ 移动端底部导航 ============ -->
+<nav class="mobile-nav" id="mobileNav">
+  <button class="mnav active" data-view="todos">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10l2.5 2.5L16 8"/></svg>
+    <span>待办</span>
+  </button>
+  <button class="mnav" data-view="notes">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M14 4v6h6"/></svg>
+    <span>笔记</span>
+  </button>
+  <button class="mnav" data-view="graph">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="7" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 8.5l7.6 -.3M7.5 9.4L11 15.6M16.6 10.2L13 15.9"/></svg>
+    <span>图谱</span>
+  </button>
+</nav>
+
+<!-- ============ 待办编辑抽屉 ============ -->
+<div class="mask" id="todoMask" hidden>
+  <div class="sheet" id="todoSheet">
+    <div class="sheet-head">
+      <h3 id="todoSheetTitle">编辑待办</h3>
+      <button class="icon-btn" id="btnCloseTodo">✕</button>
+    </div>
+    <div class="sheet-body">
+      <label class="field">
+        <span>标题</span>
+        <input type="text" id="editTitle" placeholder="待办标题">
+      </label>
+      <label class="field">
+        <span>描述</span>
+        <textarea id="editDesc" rows="4" placeholder="补充说明（支持 Markdown，转笔记时一并带走）"></textarea>
+      </label>
+      <div class="field">
+        <span>颜色</span>
+        <div class="swatches lg" id="editSwatches"></div>
+      </div>
+      <div class="field">
+        <span>状态</span>
+        <div class="seg" id="editStatus">
+          <button class="seg-btn" data-status="todo">待办</button>
+          <button class="seg-btn" data-status="doing">进行中</button>
+          <button class="seg-btn" data-status="done">已完成</button>
+        </div>
+      </div>
+      <label class="field">
+        <span>截止日期</span>
+        <input type="date" id="editDue">
+      </label>
+      <div class="field" id="linkedNoteField" hidden>
+        <span>关联笔记</span>
+        <div class="linked-note" id="linkedNote"></div>
+      </div>
+    </div>
+    <div class="sheet-foot">
+      <button class="btn ghost danger" id="btnDeleteTodo">删除</button>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="btnToNote">转为笔记</button>
+      <button class="btn primary" id="btnSaveTodo">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 同步设置抽屉 ============ -->
+<div class="mask" id="cfgMask" hidden>
+  <div class="sheet" id="cfgSheet">
+    <div class="sheet-head">
+      <h3>GitHub 实时同步</h3>
+      <button class="icon-btn" id="btnCloseCfg">✕</button>
+    </div>
+    <div class="sheet-body">
+      <p class="tip">
+        数据以单个 JSON 文件存放在你的仓库中，多端读写同一文件即可保持一致。
+        Token 仅保存在本机浏览器，不会上传到任何第三方。
+      </p>
+      <label class="field">
+        <span>仓库（owner/repo）</span>
+        <input type="text" id="cfgRepo" placeholder="例如 guoxin/workbench-data" autocomplete="off">
+      </label>
+      <div class="field-row">
+        <label class="field">
+          <span>分支</span>
+          <input type="text" id="cfgBranch" placeholder="main" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>数据文件路径</span>
+          <input type="text" id="cfgPath" placeholder="data/workbench.json" autocomplete="off">
+        </label>
+      </div>
+      <label class="field">
+        <span>访问令牌（Personal Access Token，需 repo / contents 写权限）</span>
+        <input type="password" id="cfgToken" placeholder="github_pat_… 或 ghp_…" autocomplete="off">
+      </label>
+      <div class="field-row">
+        <label class="field">
+          <span>自动拉取间隔（秒）</span>
+          <input type="number" id="cfgPoll" min="5" max="300" step="5">
+        </label>
+        <label class="field switch-field">
+          <span>启用同步</span>
+          <label class="switch"><input type="checkbox" id="cfgEnabled"><i></i></label>
+        </label>
+      </div>
+      <div class="cfg-status" id="cfgStatus"></div>
+    </div>
+    <div class="sheet-foot">
+      <button class="btn ghost" id="btnTestCfg">测试连接</button>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="btnExport">导出备份</button>
+      <button class="btn primary" id="btnSaveCfg">保存并同步</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script src="js/util.js"></script>
+<script src="js/store.js"></script>
+<script src="js/github.js"></script>
+<script src="js/markdown.js"></script>
+<script src="js/todos.js"></script>
+<script src="js/notes.js"></script>
+<script src="js/graph.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
