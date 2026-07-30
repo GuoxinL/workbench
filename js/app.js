@@ -145,21 +145,16 @@
         if (!c.token) { showCfgStatus('err', '请填写访问令牌'); return; }
       }
       S.saveCfg(c);
-      showCfgStatus('info', '配置已保存，正在同步…');
+      WB.gh.restartPoll();
+      closeCfg();                          // 配置已保存立即关窗，同步结果用通知提示
       if (WB.gh.cfgValid()) {
+        WB.util.toast('正在同步到 GitHub…', 'info', 1500);
         const ok = await WB.gh.sync({});
-        WB.gh.restartPoll();
-        if (ok !== false) {
-          showCfgStatus('ok', '同步完成，数据已写入 ' + c.repo + ' 的 ' + c.path);
-          setTimeout(closeCfg, 900);
-        } else {
-          showCfgStatus('err', WB.gh.status().lastError || '同步失败');
-        }
+        if (ok !== false) WB.util.toast('同步完成，已写入 ' + c.repo, 'ok', 2600);
+        // 失败提示由 sync 内部 toast 发出
       } else {
-        WB.gh.restartPoll();
         paintSync({ state: 'off' });
-        showCfgStatus('info', '已切换为本地模式，数据仅保存在本机浏览器');
-        setTimeout(closeCfg, 800);
+        WB.util.toast('已切换为本地模式，数据仅保存在本机', 'info', 2200);
       }
     });
 

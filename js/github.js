@@ -42,6 +42,25 @@
     };
   }
 
+  /* 带超时的 fetch：网络不可达时避免请求无限挂起 */
+  async function req(url, init, ms) {
+    ms = ms || 12000;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    try {
+      return await fetch(url, Object.assign({ signal: ctrl.signal }, init));
+    } catch (e) {
+      if (e && e.name === 'AbortError') {
+        const err = new Error('连接 GitHub 超时（' + (ms / 1000) + ' 秒），请检查网络连通性或改用 API 代理');
+        err.timeout = true;
+        throw err;
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function readErr(res) {
     let msg = res.status + ' ' + res.statusText;
     try {
@@ -58,7 +77,7 @@
   async function fetchRemote(c) {
     c = c || S.cfg;
     const url = apiUrl(c, '?ref=' + encodeURIComponent(c.branch || 'main') + '&t=' + Date.now());
-    const res = await fetch(url, { headers: headers(c), cache: 'no-store' });
+    const res = await req(url, { headers: headers(c), cache: 'no-store' });
 
     if (res.status === 404) return { exists: false, data: null, sha: null };
     if (!res.ok) throw new Error(await readErr(res));
@@ -82,7 +101,7 @@
     };
     if (sha) body.sha = sha;
 
-    const res = await fetch(apiUrl(c), {
+    const res = await req(apiUrl(c), {
       method: 'PUT',
       headers: Object.assign({ 'Content-Type': 'application/json' }, headers(c)),
       body: JSON.stringify(body)
@@ -188,7 +207,7 @@
 
     try {
       const [owner, repo] = c.repo.trim().split('/');
-      const r = await fetch(`${API}/repos/${owner}/${repo}`, { headers: headers(c) });
+      const r = await req(`${API}/repos/${owner}/${repo}`, { headers: headers(c) });
       if (!r.ok) return { ok: false, msg: await readErr(r) };
       const info = await r.json();
 
