@@ -34,7 +34,8 @@
     branch: 'main',
     path: 'data/workbench.json',
     token: '',
-    poll: 20
+    poll: 20,
+    apiBase: ''            // 留空用官方 api.github.com；网络不通时可填自建/中转代理
   };
 
   /* ---------- 状态 ---------- */

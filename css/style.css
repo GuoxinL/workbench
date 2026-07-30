@@ -369,6 +369,21 @@ code{font-family:var(--mono);font-size:.9em;}
 .cfg-status.ok{background:var(--c-green-bg);color:var(--ok);}
 .cfg-status.err{background:var(--c-red-bg);color:var(--danger);}
 .cfg-status.info{background:var(--accent-soft);color:var(--accent);}
+
+.field-hint{font-size:11.5px;color:var(--text-2);font-style:normal;line-height:1.55;}
+
+/* 同步诊断结果 */
+.diag{display:flex;flex-direction:column;gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+.diag-row{display:flex;gap:9px;padding:9px 12px;background:var(--surface);font-size:12.5px;align-items:flex-start;}
+.diag-ico{flex:none;width:16px;height:16px;border-radius:50%;display:flex;
+  align-items:center;justify-content:center;font-size:10px;color:#fff;margin-top:1px;}
+.diag-row.ok  .diag-ico{background:var(--ok);}
+.diag-row.err .diag-ico{background:var(--danger);}
+.diag-row.run .diag-ico{background:var(--line-strong);}
+.diag-row b{font-weight:600;color:var(--text);display:block;}
+.diag-row p{margin:2px 0 0;color:var(--text-2);line-height:1.6;white-space:pre-wrap;word-break:break-word;}
+.diag-row.err p{color:var(--danger);}
 .linked-note{font-size:13px;color:var(--accent);cursor:pointer;padding:8px 11px;
   background:var(--accent-soft);border-radius:8px;}
 

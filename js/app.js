@@ -138,6 +138,30 @@
       showCfgStatus(r.ok ? 'ok' : 'err', r.msg);
     });
 
+    $('#btnDiagCfg').addEventListener('click', async () => {
+      const btn = $('#btnDiagCfg');
+      if (btn.disabled) return;
+      btn.disabled = true;
+      const box = $('#cfgDiag');
+      box.hidden = false;
+      box.innerHTML = '';
+      $('#cfgStatus').className = 'cfg-status';
+      const done = [];
+      addDiagRow(box, null, '正在检测…', '');
+      try {
+        await WB.gh.diagnose(readCfg(), (it) => {
+          done.push(it);
+          box.innerHTML = '';
+          done.forEach(d => addDiagRow(box, d.ok, d.name, d.msg));
+          if (it.ok) addDiagRow(box, null, '正在检测…', '');
+        });
+      } catch (e) {
+        addDiagRow(box, false, '诊断异常', e.message || String(e));
+      }
+      box.querySelectorAll('.diag-row.run').forEach(n => n.remove());
+      btn.disabled = false;
+    });
+
     $('#btnSaveCfg').addEventListener('click', async () => {
       const c = readCfg();
       if (c.enabled) {
@@ -178,9 +202,12 @@
     $('#cfgBranch').value = c.branch || 'main';
     $('#cfgPath').value = c.path || 'data/workbench.json';
     $('#cfgToken').value = c.token || '';
+    $('#cfgApiBase').value = c.apiBase || '';
     $('#cfgPoll').value = c.poll || 20;
     $('#cfgEnabled').checked = !!c.enabled;
     $('#cfgStatus').className = 'cfg-status';
+    $('#cfgDiag').hidden = true;
+    $('#cfgDiag').innerHTML = '';
     $('#cfgMask').hidden = false;
   }
 
@@ -192,9 +219,31 @@
       branch: $('#cfgBranch').value.trim() || 'main',
       path: ($('#cfgPath').value.trim() || 'data/workbench.json').replace(/^\/+/, ''),
       token: $('#cfgToken').value.trim(),
+      apiBase: $('#cfgApiBase').value.trim().replace(/\/+$/, ''),
       poll: Math.max(5, Math.min(300, Number($('#cfgPoll').value) || 20)),
       enabled: $('#cfgEnabled').checked
     };
+  }
+
+  /* 诊断结果一行：ok=true 通过 / false 失败 / null 进行中 */
+  function addDiagRow(box, ok, name, msg) {
+    const row = document.createElement('div');
+    row.className = 'diag-row ' + (ok === null ? 'run' : ok ? 'ok' : 'err');
+    const ico = document.createElement('span');
+    ico.className = 'diag-ico';
+    ico.textContent = ok === null ? '⋯' : ok ? '✓' : '✕';
+    const body = document.createElement('div');
+    const b = document.createElement('b');
+    b.textContent = name;
+    body.appendChild(b);
+    if (msg) {
+      const p = document.createElement('p');
+      p.textContent = msg;
+      body.appendChild(p);
+    }
+    row.appendChild(ico);
+    row.appendChild(body);
+    box.appendChild(row);
   }
 
   function showCfgStatus(kind, msg) {

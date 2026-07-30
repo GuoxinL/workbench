@@ -230,6 +230,13 @@
         <span>访问令牌（Personal Access Token，需 repo / contents 写权限）</span>
         <input type="password" id="cfgToken" placeholder="github_pat_… 或 ghp_…" autocomplete="off">
       </label>
+      <label class="field">
+        <span>API 代理地址（可选，网络访问不了 GitHub 时填）</span>
+        <input type="text" id="cfgApiBase" placeholder="留空使用官方 https://api.github.com" autocomplete="off">
+        <em class="field-hint">
+          填入后所有请求改走该地址，需与 GitHub API 接口保持一致。令牌会经过它，务必只填你自己搭建或完全信任的服务。
+        </em>
+      </label>
       <div class="field-row">
         <label class="field">
           <span>自动拉取间隔（秒）</span>
@@ -241,8 +248,10 @@
         </label>
       </div>
       <div class="cfg-status" id="cfgStatus"></div>
+      <div class="diag" id="cfgDiag" hidden></div>
     </div>
     <div class="sheet-foot">
+      <button class="btn ghost" id="btnDiagCfg">诊断</button>
       <button class="btn ghost" id="btnTestCfg">测试连接</button>
       <div class="spacer"></div>
       <button class="btn ghost" id="btnExport">导出备份</button>
