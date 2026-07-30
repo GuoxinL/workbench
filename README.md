@@ -59,7 +59,7 @@ git push -u origin main
 > 同步用的是 GitHub **Contents API**，与上面部署代码的仓库是独立的两回事。
 > Pages 站点必然公开，所以**数据一定要放在另一个私有仓库**里。
 
-新建一个**私有**仓库，例如 `workbench-data`，空仓库即可（首次同步会自动创建数据文件）。
+新建一个**私有**仓库 `workbench-data`（应用内已把它设为默认仓库，填的是 `GuoxinL/workbench-data`），空仓库即可，首次同步会自动创建数据文件。
 
 > 新建时勾选 "Add a README file"，避免出现空仓库没有默认分支的情况。
 
@@ -78,7 +78,7 @@ git push -u origin main
 
 打开 Pages 站点 → 右上角齿轮 → 填写：
 
-- **仓库**：`你的用户名/workbench-data`
+- **仓库**：`GuoxinL/workbench-data`（已预填为默认值，换账号时改这里）
 - **分支**：`main`
 - **数据文件路径**：`data/workbench.json`
 - **访问令牌**：粘贴上面的 token

@@ -197,10 +197,10 @@
   }
 
   function openCfg() {
-    const c = S.cfg;
-    $('#cfgRepo').value = c.repo || '';
-    $('#cfgBranch').value = c.branch || 'main';
-    $('#cfgPath').value = c.path || 'data/workbench.json';
+    const c = S.cfg, D = S.DEFAULT_CFG;
+    $('#cfgRepo').value = c.repo || D.repo;
+    $('#cfgBranch').value = c.branch || D.branch;
+    $('#cfgPath').value = c.path || D.path;
     $('#cfgToken').value = c.token || '';
     $('#cfgApiBase').value = c.apiBase || '';
     $('#cfgPoll').value = c.poll || 20;
@@ -215,9 +215,9 @@
 
   function readCfg() {
     return {
-      repo: $('#cfgRepo').value.trim(),
-      branch: $('#cfgBranch').value.trim() || 'main',
-      path: ($('#cfgPath').value.trim() || 'data/workbench.json').replace(/^\/+/, ''),
+      repo: $('#cfgRepo').value.trim() || S.DEFAULT_CFG.repo,
+      branch: $('#cfgBranch').value.trim() || S.DEFAULT_CFG.branch,
+      path: ($('#cfgPath').value.trim() || S.DEFAULT_CFG.path).replace(/^\/+/, ''),
       token: $('#cfgToken').value.trim(),
       apiBase: $('#cfgApiBase').value.trim().replace(/\/+$/, ''),
       poll: Math.max(5, Math.min(300, Number($('#cfgPoll').value) || 20)),

@@ -30,7 +30,7 @@
   /* ---------- 默认配置 ---------- */
   const DEFAULT_CFG = {
     enabled: false,
-    repo: '',
+    repo: 'GuoxinL/workbench-data',
     branch: 'main',
     path: 'data/workbench.json',
     token: '',
@@ -70,6 +70,11 @@
       const raw = localStorage.getItem(LS_CFG);
       if (raw) cfg = Object.assign({}, DEFAULT_CFG, JSON.parse(raw));
     } catch (e) { console.warn('[store] 本地配置解析失败', e); }
+
+    // 旧版本可能存过空字符串，会盖掉默认值；这里逐项回落，保证默认仓库/分支/路径始终有值
+    ['repo', 'branch', 'path'].forEach(k => {
+      if (!cfg[k] || !String(cfg[k]).trim()) cfg[k] = DEFAULT_CFG[k];
+    });
 
     deviceId = localStorage.getItem(LS_DEVICE) || '';
     if (!deviceId) {
