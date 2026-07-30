@@ -126,10 +126,13 @@
   /* ---------------- 设置面板 ---------------- */
   function initCfgSheet() {
     $('#btnSettings').addEventListener('click', openCfg);
-    $('#btnCloseCfg').addEventListener('click', closeCfg);
-    $('#cfgMask').addEventListener('mousedown', e => {
+    $('#btnCloseCfg').addEventListener('click', e => { e.preventDefault(); closeCfg(); });
+    // 双重保障：mousedown + click，兼容触屏和键盘操作
+    $('#cfgMask').addEventListener('click', e => {
       if (e.target === $('#cfgMask')) closeCfg();
     });
+    // 防止 sheet 内部点击冒泡到 mask 关闭窗口
+    $('#cfgSheet').addEventListener('click', e => e.stopPropagation());
 
     $('#btnTestCfg').addEventListener('click', async () => {
       const c = readCfg();
@@ -214,7 +217,14 @@
     $('#cfgMask').hidden = false;
   }
 
-  function closeCfg() { $('#cfgMask').hidden = true; }
+  function closeCfg() {
+    const mask = $('#cfgMask');
+    if (!mask) return;
+    mask.hidden = true;
+    // 清除可能残留的状态提示
+    const st = $('#cfgStatus');
+    if (st) { st.className = 'cfg-status'; st.textContent = ''; }
+  }
 
   function readCfg() {
     return {
