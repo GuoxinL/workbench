@@ -22,7 +22,7 @@
   let lastSyncAt = 0;
   let lastError = '';
   let pollTimer = null;
-  let running = false;       // 互斥，避免并发推送
+  let inflight = null;       // 进行中的同步 Promise，用于排队而非丢弃
 
   function setState(s, err) {
     state = s;
@@ -137,15 +137,9 @@
     return j.content && j.content.sha;
   }
 
-  /* ---------- 核心：一次完整同步 ---------- */
-  async function sync(opts) {
-    opts = opts || {};
+  /* ---------- 核心：一次完整同步（不含并发控制） ---------- */
+  async function runSync(opts) {
     const c = S.cfg;
-
-    if (!cfgValid(c)) { setState('off'); return false; }
-    if (running) return false;
-
-    running = true;
     setState('syncing');
 
     try {
@@ -171,8 +165,10 @@
           lastSyncAt = Date.now();
           S.setDirty(false);
           setState('ok');
-          running = false;
-          return merged;
+          // 注意：这里必须返回真值。调用方以 `=== false` 判定失败，
+          // 「两端已一致、无需推送」同样是成功；早期返回 merged（可能为 false）
+          // 会让成功的空同步被误报成「同步失败」。
+          return { merged, pushed: false };
         }
 
         try {
@@ -181,7 +177,6 @@
           lastSyncAt = Date.now();
           S.setDirty(false);
           setState('ok');
-          running = false;
           return true;
         } catch (e) {
           if (e.conflict && attempt < 3) {
@@ -194,13 +189,39 @@
       }
       throw new Error('多次提交冲突，已放弃本次同步');
     } catch (e) {
-      running = false;
       lastError = e.message || String(e);
       setState('error', lastError);
       if (!opts.silent) U.toast('同步失败：' + lastError, 'err', 3200);
       return false;
     }
   }
+
+  /*
+   * 对外的同步入口，负责并发排队。
+   *
+   * 早期版本在检测到已有同步进行中时直接 `return false`，调用方会把「正忙」
+   * 误判为「同步失败」。轮询每 5 秒触发一次、单次耗时最长两秒多，用户手动点
+   * 「保存并同步」撞上正在跑的轮询是大概率事件，于是出现「明明网络正常却报同步失败」。
+   *
+   * 现在的策略：
+   *   - 静默调用（轮询、防抖推送）：复用进行中的那次结果，避免重复请求；
+   *   - 用户主动调用：等当前这次结束后再真正跑一次，保证刚改的内容一定被推上去。
+   */
+  function sync(opts) {
+    opts = opts || {};
+    if (!cfgValid(S.cfg)) { setState('off'); return Promise.resolve(false); }
+
+    if (inflight) {
+      if (opts.silent) return inflight;
+      return inflight.then(() => sync(opts), () => sync(opts));
+    }
+
+    inflight = runSync(opts);
+    inflight.then(clearInflight, clearInflight);
+    return inflight;
+  }
+
+  function clearInflight() { inflight = null; }
 
   /* ---------- 防抖推送 ---------- */
   const schedulePush = U.debounce(() => { sync({ silent: true }); }, 1500);

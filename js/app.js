@@ -198,6 +198,9 @@
 
   function openCfg() {
     const c = S.cfg, D = S.DEFAULT_CFG;
+    const vm = document.querySelector('meta[name="wb-version"]');
+    const vEl = $('#wbVersion');
+    if (vm && vEl) vEl.textContent = 'v' + vm.content;
     $('#cfgRepo').value = c.repo || D.repo;
     $('#cfgBranch').value = c.branch || D.branch;
     $('#cfgPath').value = c.path || D.path;
