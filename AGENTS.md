@@ -18,6 +18,7 @@
 | 接口文档总索引 / 编写规范 / 模板 | `.harness/docs/apis/index.md`、`.harness/docs/apis/api-standards.md`、`.harness/docs/apis/_template.md` |
 | **单元测试规范（环境 / 生成 / 运行调试，三段式）** | **`.harness/docs/unittest/unittest.md`**（项目专属规则若存在以 `.codebuddy/rules/unittest_*.md` 为权威） |
 | **集成测试规范（环境 / 用例 / 运行调试，三段式）** | **`.harness/docs/integration_test/integration_test.md`**（项目专属规则若存在以 `.codebuddy/rules/integration_test_*.md` 为权威） |
+| **功能验证手册（每次改动后的自然语言核验流程）** | **`.harness/docs/verification.md`** |
 | 本地环境搭建与启动 | `.harness/docs/devops/env.md` |
 | 日常开发流程（改码 → 刷新验证 → bump 版本） | `.harness/docs/devops/development.md` |
 | GitHub Pages 部署 / Worker 代理部署 | `.harness/docs/devops/deployment.md` |
