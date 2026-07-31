@@ -1,0 +1,18 @@
+:root {
+  --bg: #f7f8fa;
+  --fg: #1f2329;
+  --muted: #8a9099;
+  --line: #e5e6eb;
+  --brand: #3b82f6;
+  --brand-weak: #eaf2ff;
+
+  /* 8 色分类（沿用旧版语义） */
+  --c-blue: #3b82f6;
+  --c-red: #ef4444;
+  --c-amber: #f59e0b;
+  --c-green: #22c55e;
+  --c-purple: #a855f7;
+  --c-teal: #14b8a6;
+  --c-pink: #ec4899;
+  --c-slate: #64748b;
+}
