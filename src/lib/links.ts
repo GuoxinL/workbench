@@ -26,18 +26,18 @@ export function extractRefs(content: string): WikiRef[] {
 }
 
 export interface LinkGraph {
-  /** note id -> 出链目标 slug 集合 */
+  /** 文章 id -> 出链目标 slug 集合 */
   out: Map<string, Set<string>>
-  /** 目标 slug -> 引用它的 source note id 集合 */
+  /** 目标 slug -> 引用它的源文章 id 集合 */
   in: Map<string, Set<string>>
-  /** 被引用但无对应笔记的 slug 集合（缺失链接，对应 L5/L8） */
+  /** 被引用但无对应文章的 slug 集合（缺失链接，对应 L5/L8） */
   missing: Set<string>
-  /** slug -> note id（现有笔记的标题索引） */
+  /** slug -> 文章 id（现有文章的标题索引） */
   titleToId: Map<string, string>
 }
 
 /**
- * 构建双向链接图（对应 notes.js buildGraph）。
+ * 构建双向链接图（对应 articles.js buildGraph）。
  * 忽略自引用（L9），同篇重复引用已在 extractRefs 去重（L10）。
  */
 export function buildGraph(articles: Article[]): LinkGraph {
@@ -75,9 +75,9 @@ export function buildGraph(articles: Article[]): LinkGraph {
 }
 
 /**
- * 批量改写引用：把所有笔记里指向 `oldTitle` 的 [[oldTitle]] / [[oldTitle|alias]]
+ * 批量改写引用：把所有文章里指向 `oldTitle` 的 [[oldTitle]] / [[oldTitle|alias]]
  * 改写为 `newTitle`（保留别名）。用于改标题联动改引用（L11）。
- * 返回新的笔记数组；被改动的笔记会刷新 updatedAt。
+ * 返回新的文章数组；被改动的文章会刷新 updatedAt。
  */
 export function renameRefs(oldTitle: string, newTitle: string, articles: Article[]): Article[] {
   const oldSlug = slug(oldTitle)

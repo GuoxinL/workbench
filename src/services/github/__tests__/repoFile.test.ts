@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getFile, putFile, ConflictError } from '../notes'
+import { getFile, putFile, ConflictError } from '../repoFile'
 import type { Config } from '@/types'
 
 const config: Config = {
@@ -19,7 +19,7 @@ function b64(s: string): string {
   return btoa(bin)
 }
 
-describe('notes 单文件 I/O', () => {
+describe('repoFile 单文件 I/O', () => {
   afterEach(() => vi.unstubAllGlobals())
 
   it('getFile 解码 unicode base64', async () => {

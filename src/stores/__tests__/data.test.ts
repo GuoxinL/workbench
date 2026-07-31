@@ -36,20 +36,20 @@ describe('data store —— 待办 / 知识库文章', () => {
     expect(s.todos.find((x) => x.id === t.id)?.status).toBe('done')
   })
 
-  it('todoToArticle 生成笔记并双向关联（X7）', () => {
+  it('todoToArticle 生成文章并双向关联（X7）', () => {
     const s = useDataStore()
     const t = s.addTodo({ title: '任务', desc: '细节' })
     const a = s.todoToArticle(t.id)!
     expect(a.fromTodo).toBe(t.id)
     expect(a.content).toContain('## 记录')
-    expect(s.todoById(t.id)?.noteId).toBe(a.id)
+    expect(s.todoById(t.id)?.articleId).toBe(a.id)
   })
 
   it('addArticle 同名自动去重（N3）', () => {
     const s = useDataStore()
-    s.addArticle('笔记')
-    const b = s.addArticle('笔记')
-    expect(b.title).toBe('笔记 2')
+    s.addArticle('文章')
+    const b = s.addArticle('文章')
+    expect(b.title).toBe('文章 2')
   })
 
   it('removeArticle 解除待办关联（N9）', () => {
@@ -57,7 +57,7 @@ describe('data store —— 待办 / 知识库文章', () => {
     const t = s.addTodo({ title: 't' })
     const a = s.todoToArticle(t.id)!
     s.removeArticle(a.id)
-    expect(s.todoById(t.id)?.noteId).toBe('')
+    expect(s.todoById(t.id)?.articleId).toBe('')
   })
 
   it('updateArticle 改名联动改引用（L11）', () => {
@@ -71,7 +71,7 @@ describe('data store —— 待办 / 知识库文章', () => {
     expect(a2after.content).not.toContain('[[Alpha]]')
   })
 
-  it('seedIfEmpty 首次播种 3 笔记 + 4 待办（X3）', () => {
+  it('seedIfEmpty 首次播种 3 文章 + 4 待办（X3）', () => {
     localStorage.clear()
     localStorage.removeItem('wb.seeded')
     setActivePinia(createPinia())

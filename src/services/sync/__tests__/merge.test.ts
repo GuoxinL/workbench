@@ -13,13 +13,13 @@ function todo(id: string, updatedAt: number, deleted = false) {
     color: 'blue' as const,
     status: 'todo' as const,
     due: '',
-    noteId: '',
+    articleId: '',
     createdAt: 1,
     updatedAt,
     deleted,
   }
 }
-function note(id: string, updatedAt: number, deleted = false) {
+function article(id: string, updatedAt: number, deleted = false) {
   return { id, title: id, content: '', fromTodo: '', tags: [], createdAt: 1, updatedAt, deleted }
 }
 
@@ -71,9 +71,9 @@ describe('mergeInto', () => {
     expect(r.todos.map((t) => t.id)).toEqual(['new', 'old'])
   })
 
-  it('todos 与 notes 分别合并', () => {
-    const local = data([todo('a', 1)], [note('x', 1)])
-    const remote = data([todo('a', 1)], [note('y', 2)])
+  it('todos 与 articles 分别合并', () => {
+    const local = data([todo('a', 1)], [article('x', 1)])
+    const remote = data([todo('a', 1)], [article('y', 2)])
     const r = mergeInto(local, remote)
     expect(r.todos.map((t) => t.id)).toEqual(['a'])
     expect(r.articles.map((n) => n.id).sort()).toEqual(['x', 'y'])

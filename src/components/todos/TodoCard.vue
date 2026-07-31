@@ -20,7 +20,7 @@ const dueLabel = computed(() =>
 )
 
 const related = computed(() =>
-  props.todo.noteId ? store.articleById(props.todo.noteId) : undefined,
+  props.todo.articleId ? store.articleById(props.todo.articleId) : undefined,
 )
 
 function toggle() {
@@ -56,8 +56,8 @@ async function remove() {
         <span v-if="dueLabel" class="due" :class="{ over: overdue }">{{ dueLabel }}</span>
         <router-link
           v-if="related"
-          :to="{ name: 'notes', params: { id: related.id } }"
-          class="note-link"
+          :to="{ name: 'articles', params: { id: related.id } }"
+          class="article-link"
           @click.stop
         >📝 {{ related.title }}</router-link>
       </div>
@@ -151,7 +151,7 @@ async function remove() {
   color: #ef4444;
   font-weight: 600;
 }
-.note-link {
+.article-link {
   color: var(--brand);
   text-decoration: none;
 }

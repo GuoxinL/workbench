@@ -1,7 +1,7 @@
 import type { Article, Config, Manifest } from '@/types'
 import { slug } from '@/lib/slug'
 import { parseFrontmatter, serializeFrontmatter } from '@/lib/markdown/frontmatter'
-import { ConflictError, getFile, putFile } from './notes'
+import { ConflictError, getFile, putFile } from './repoFile'
 import { emptyManifest, getManifest, indexFromArticles, putManifest } from './manifest'
 
 export interface RemoteSnapshot {

@@ -106,7 +106,7 @@ function tagColor(t: string): string {
 async function remove() {
   if (!props.article) return
   try {
-    await ElMessageBox.confirm(`删除文章「${props.article.title}」？其它笔记中的引用将标记为未创建。`, '删除确认', {
+    await ElMessageBox.confirm(`删除文章「${props.article.title}」？其它文章中的引用将标记为未创建。`, '删除确认', {
       type: 'warning',
       confirmButtonText: '删除',
       cancelButtonText: '取消',

@@ -28,7 +28,7 @@ const statusOptions = [
 ]
 
 const related = computed(() =>
-  props.todo?.noteId ? store.articleById(props.todo.noteId) : undefined,
+  props.todo?.articleId ? store.articleById(props.todo.articleId) : undefined,
 )
 
 // 打开时把当前待办填入表单
@@ -105,8 +105,8 @@ function onKeydown(e: KeyboardEvent) {
         />
       </label>
       <div v-if="related" class="field">
-        <span>关联笔记</span>
-        <router-link :to="{ name: 'notes', params: { id: related.id } }" @click="visible = false">
+        <span>关联文章</span>
+        <router-link :to="{ name: 'articles', params: { id: related.id } }" @click="visible = false">
           📝 {{ related.title }}
         </router-link>
       </div>

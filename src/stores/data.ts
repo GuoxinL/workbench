@@ -15,12 +15,27 @@ function emptyData(): WorkbenchData {
   return { version: 1, todos: [], articles: [], updatedAt: Date.now() }
 }
 
+/**
+ * 一次性迁移：Note→Article 重命名后，旧 `wb.data.v1` 里待办的 `noteId`
+ * 字段需映射为 `articleId`，否则历史关联会丢失（todos 不进同步，仅本地）。
+ */
+function migrateData(d: WorkbenchData): WorkbenchData {
+  const todos = (d.todos ?? []).map((t: any) => {
+    if (t && typeof t === 'object' && 'noteId' in t && !('articleId' in t)) {
+      const { noteId, ...rest } = t
+      return { ...rest, articleId: noteId }
+    }
+    return t
+  })
+  return { ...d, todos }
+}
+
 function loadData(): WorkbenchData {
   try {
     const raw = localStorage.getItem(DATA_KEY)
     if (raw) {
       const d = JSON.parse(raw) as WorkbenchData
-      if (d && Array.isArray(d.todos) && Array.isArray(d.articles)) return d
+      if (d && Array.isArray(d.todos) && Array.isArray(d.articles)) return migrateData(d)
     }
   } catch {
     /* 损坏数据回落到空 */
@@ -93,7 +108,7 @@ export const useDataStore = defineStore('data', () => {
       color: (partial.color ?? 'blue') as ColorKey,
       status: (partial.status ?? 'todo') as TodoStatus,
       due: partial.due ?? '',
-      noteId: partial.noteId ?? '',
+      articleId: partial.articleId ?? '',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       deleted: false,
@@ -117,7 +132,7 @@ export const useDataStore = defineStore('data', () => {
 
   // ── Article（知识库文章） ─────────────────────────────
   function addArticle(title?: string): Article {
-    const base = title && title.trim() ? title.trim() : '未命名笔记'
+    const base = title && title.trim() ? title.trim() : '未命名文章'
     const existing = data.value.articles.filter((n) => !n.deleted).map((n) => n.title)
     const finalTitle = dedupTitle(base, existing)
     const a: Article = {
@@ -173,9 +188,9 @@ export const useDataStore = defineStore('data', () => {
     const i = data.value.articles.findIndex((n) => n.id === id)
     if (i < 0) return
     data.value.articles[i] = { ...data.value.articles[i], deleted: true, updatedAt: Date.now() }
-    // 解除关联待办的 noteId（N9）
+    // 解除关联待办的 articleId（N9）
     data.value.todos = data.value.todos.map((t) =>
-      t.noteId === id ? { ...t, noteId: '', updatedAt: Date.now() } : t,
+      t.articleId === id ? { ...t, articleId: '', updatedAt: Date.now() } : t,
     )
     touch()
     engine.schedulePush()
@@ -185,8 +200,8 @@ export const useDataStore = defineStore('data', () => {
   function todoToArticle(todoId: string): Article | null {
     const t = todoById(todoId)
     if (!t) return null
-    if (t.noteId) return articleById(t.noteId) ?? null
-    const base = t.title.trim() || '未命名笔记'
+    if (t.articleId) return articleById(t.articleId) ?? null
+    const base = t.title.trim() || '未命名文章'
     const existing = data.value.articles.filter((n) => !n.deleted).map((n) => n.title)
     const title = dedupTitle(base, existing)
     const content = [t.desc ? t.desc : '', '', '## 记录', '', '## 关联', ''].join('\n')
@@ -201,7 +216,7 @@ export const useDataStore = defineStore('data', () => {
       deleted: false,
     }
     data.value.articles = [a, ...data.value.articles]
-    updateTodo(todoId, { noteId: a.id })
+    updateTodo(todoId, { articleId: a.id })
     touch()
     engine.schedulePush()
     return a
@@ -262,7 +277,7 @@ export const useDataStore = defineStore('data', () => {
     URL.revokeObjectURL(url)
   }
 
-  // X3：首次使用播种示例数据（3 篇互相引用的笔记 + 4 条待办），仅一次
+  // X3：首次使用播种示例数据（3 篇互相引用的文章 + 4 条待办），仅一次
   function seedIfEmpty() {
     if (localStorage.getItem('wb.seeded')) return
     if (data.value.articles.length || data.value.todos.length) {
@@ -278,7 +293,7 @@ export const useDataStore = defineStore('data', () => {
     updateArticle(b.id, { content: '工作台的核心特色是 [[欢迎使用工作台]] 展示的双链；也可用 [[标签示例]]。' })
     const c = addArticle('标签示例')
     updateArticle(c.id, { content: '给文章打标签，在「标签」视图查看聚合。见 [[欢迎使用工作台]]。', tags: ['示例', '入门'] })
-    addTodo({ title: '阅读欢迎笔记', color: 'blue', status: 'todo' })
+    addTodo({ title: '阅读欢迎文章', color: 'blue', status: 'todo' })
     addTodo({ title: '建立第一条双链', color: 'purple', status: 'doing' })
     addTodo({ title: '配置 GitHub 同步', color: 'amber', status: 'todo' })
     addTodo({ title: '已完成示例', color: 'green', status: 'done' })

@@ -9,14 +9,14 @@ function b64(s: string): string {
   return btoa(bin)
 }
 
-const notes: Article[] = [
+const articles: Article[] = [
   { id: '1', title: 'A', content: '', fromTodo: '', tags: [], createdAt: 1, updatedAt: 100, deleted: false },
   { id: '2', title: 'B', content: '', fromTodo: '', tags: [], createdAt: 2, updatedAt: 200, deleted: false },
 ]
 
 describe('manifest 纯函数', () => {
   it('indexFromArticles 按 slug 建索引', () => {
-    const idx = indexFromArticles(notes)
+    const idx = indexFromArticles(articles)
     expect(Object.keys(idx).sort()).toEqual(['a', 'b'])
     expect(idx.a.updatedAt).toBe(100)
   })

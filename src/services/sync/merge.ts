@@ -36,7 +36,7 @@ function mergeEntities<T extends { id: string; createdAt: number; updatedAt: num
 }
 
 /** 逐条 LWW 合并文章数组（按 id 主键，updatedAt 大者胜）。供同步引擎按文件合并复用。 */
-export function mergeNotes(local: Article[], remote: Article[]): { items: Article[]; changed: boolean } {
+export function mergeArticles(local: Article[], remote: Article[]): { items: Article[]; changed: boolean } {
   return mergeEntities(local, remote)
 }
 

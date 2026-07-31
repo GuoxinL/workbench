@@ -109,7 +109,7 @@ function onWheel(e: WheelEvent) {
 }
 
 function openNode(id: string) {
-  router.push({ name: 'notes', params: { id } })
+  router.push({ name: 'articles', params: { id } })
 }
 
 onMounted(layout)
@@ -121,7 +121,7 @@ onMounted(layout)
       <button class="btn" @click="reLayout">重新布局</button>
       <span class="muted">滚轮缩放 · 拖拽节点</span>
     </div>
-    <p v-if="!hasLinks" class="empty muted">还没有笔记之间的引用关系</p>
+    <p v-if="!hasLinks" class="empty muted">还没有文章之间的引用关系</p>
     <svg
       v-else
       ref="svgRef"

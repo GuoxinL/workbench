@@ -38,14 +38,14 @@ function pick(t: string) {
   selected.value = selected.value === t ? null : t
 }
 function open(id: string) {
-  router.push({ name: 'notes', params: { id } })
+  router.push({ name: 'articles', params: { id } })
 }
 </script>
 
 <template>
   <section class="view">
     <h2>标签云</h2>
-    <p v-if="!tagCounts.length" class="muted">还没有标签，在笔记编辑中给文章添加标签即可。</p>
+    <p v-if="!tagCounts.length" class="muted">还没有标签，在文章里添加标签即可。</p>
     <div v-else class="cloud">
       <button
         v-for="[t, c] in tagCounts"

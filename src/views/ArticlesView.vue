@@ -23,14 +23,14 @@ watch(
 function onSelect(id: string) {
   editorRef.value?.flush() // N5：切走前落盘
   selectedId.value = id
-  router.push({ name: 'notes', params: { id } })
+  router.push({ name: 'articles', params: { id } })
 }
 
 function onCreate() {
   editorRef.value?.flush()
-  const a = store.addArticle() // N3：默认「未命名笔记」+ 同名去重
+  const a = store.addArticle() // N3：默认「未命名文章」+ 同名去重
   selectedId.value = a.id
-  router.push({ name: 'notes', params: { id: a.id } })
+  router.push({ name: 'articles', params: { id: a.id } })
   nextTick(() => editorRef.value?.enterEdit()) // N3：进编辑并全选标题
 }
 </script>

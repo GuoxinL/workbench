@@ -9,7 +9,7 @@ export interface Todo {
   color: ColorKey
   status: TodoStatus
   due: string // 'YYYY-MM-DD'，空串表示无截止
-  noteId: string // 关联知识库文章 id，空串表示无
+  articleId: string // 关联知识库文章 id，空串表示无
   createdAt: number
   updatedAt: number
   deleted: boolean // 软删除墓碑

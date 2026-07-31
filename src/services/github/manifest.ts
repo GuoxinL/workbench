@@ -1,6 +1,6 @@
 import type { Article, Config, Manifest, ManifestEntry } from '@/types'
 import { slug } from '@/lib/slug'
-import { getFile, putFile, ConflictError } from './notes'
+import { getFile, putFile, ConflictError } from './repoFile'
 
 export function emptyManifest(): Manifest {
   return { version: 1, updatedAt: Date.now(), articles: {}, todosSha: '' }

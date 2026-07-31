@@ -1,5 +1,5 @@
 import type { Article, Config, Manifest, SyncPhase } from '@/types'
-import { mergeNotes } from '@/services/sync/merge'
+import { mergeArticles } from '@/services/sync/merge'
 import { emptyManifest } from '@/services/github/manifest'
 import { isConfigComplete } from '@/services/github/diagnose'
 import type { RemoteSnapshot } from '@/services/github/contents'
@@ -81,7 +81,7 @@ export function createSyncEngine(adapter: SyncAdapter, contents: ContentsApi): S
         const config = adapter.getConfig()
         const remote = await contents.fetchRemote(config)
         const local = adapter.getLocalArticles()
-        const merged = mergeNotes(local, remote?.articles ?? [])
+        const merged = mergeArticles(local, remote?.articles ?? [])
         // 合并结果写回本地（mergeInto 的 LWW 语义）
         adapter.applyRemote(merged.items, remote?.manifest ?? emptyManifest())
         const pushResult = await contents.pushRemote(

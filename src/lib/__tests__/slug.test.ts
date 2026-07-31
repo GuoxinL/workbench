@@ -6,6 +6,6 @@ describe('slug', () => {
     expect(slug('  Hello   World ')).toBe('hello world')
   })
   it('中文标题大小写与空白处理', () => {
-    expect(slug('  我的  笔记 ')).toBe('我的 笔记')
+    expect(slug('  我的  文章 ')).toBe('我的 文章')
   })
 })
