@@ -48,7 +48,8 @@ export async function githubRequest(
   opts: RequestInput,
   config: Config,
 ): Promise<RequestResult> {
-  const url = `${config.apiBase}/repos/${config.repo}/contents/${path}?ref=${encodeURIComponent(config.branch)}`
+  const base = (config.apiBase && config.apiBase.trim()) || 'https://api.github.com'
+  const url = `${base}/repos/${config.repo}/contents/${path}?ref=${encodeURIComponent(config.branch)}`
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
   const headers: Record<string, string> = {

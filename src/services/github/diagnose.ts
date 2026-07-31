@@ -13,13 +13,14 @@ export interface ConnResult {
   canPush?: boolean
 }
 
-/** 配置是否足以发起 GitHub 请求（owner/repo、分支、令牌、API 基址齐备）。 */
+/** 配置是否足以发起 GitHub 请求。apiBase 可选，为空时默认 https://api.github.com。 */
 export function isConfigComplete(c: Config): boolean {
-  return !!c.repo && c.repo.includes('/') && !!c.token && !!c.branch && !!c.apiBase
+  return !!c.repo && c.repo.includes('/') && !!c.token && !!c.branch
 }
 
 function repoApi(config: Config): string {
-  return `${config.apiBase}/repos/${config.repo}`
+  const base = (config.apiBase && config.apiBase.trim()) || 'https://api.github.com'
+  return `${base}/repos/${config.repo}`
 }
 
 async function repoFetch(config: Config, sub: string, init: RequestInit = {}): Promise<Response> {

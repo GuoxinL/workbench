@@ -49,10 +49,21 @@ describe('diagnose（S17/S18）', () => {
     expect(fetchMock).not.toHaveBeenCalled() // 不应发 GET /repos/ 导致 404
   })
 
-  it('isConfigComplete：owner/repo 缺斜杠或缺失令牌均判为不完整', () => {
+  it('isConfigComplete：owner/repo 缺斜杠或缺失令牌均判为不完整；apiBase 可选', () => {
     expect(isConfigComplete({ ...cfg, repo: 'GuoxinL/workbench-data' })).toBe(true)
     expect(isConfigComplete({ ...cfg, repo: 'workbench-data' })).toBe(false) // 缺 owner
     expect(isConfigComplete({ ...cfg, token: '' })).toBe(false)
-    expect(isConfigComplete({ ...cfg, apiBase: '' })).toBe(false)
+    expect(isConfigComplete({ ...cfg, apiBase: '' })).toBe(true) // apiBase 可选，缺省默认官方 API
+  })
+
+  it('测试连接：apiBase 为空时以官方 API 为默认，仍发起连通校验而非报配置不完整', async () => {
+    const fetchMock = vi.fn(async (_url: string) =>
+      new Response(JSON.stringify({ permissions: { push: true } }), { status: 200 }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const r = await testConnection({ ...cfg, apiBase: '' })
+    expect(fetchMock).toHaveBeenCalled()
+    expect(fetchMock.mock.calls[0][0]).toContain('https://api.github.com/repos/o/r')
+    expect(r.ok).toBe(true)
   })
 })
