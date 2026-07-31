@@ -58,11 +58,11 @@
 >
 > **禁止**在 `master`/`main` 上做 SOP；一个分支只允许对应一个任务目录。
 
-### 协同开发检测（design.md 驱动）
+### 协同开发检测（design.html 驱动）
 
 > 触发：当前分支非 master/main 且无对应任务。
-> - `.harness/design.md` 存在且用户确认使用 → 创建任务目录（同样按上方 ③ 精简 _template/ 注释）→ 从 design.md 完整派生 `01-clarify.md` + `02-plan.md`（禁止只写「详见 design.md」）→ 填 Meta（`开发模式`=协同、`测试环境`）→ 自检后删除 design.md → 从 Step 3 开始
-> - design.md 不存在 → 标准流程
+> - `.harness/design.html` 存在且用户确认使用 → 创建任务目录（同样按上方 ③ 精简 _template/ 注释）→ 从 design.html 完整派生 `01-clarify.md` + `02-plan.md`（禁止只写「详见 design.html」）→ 填 Meta（`开发模式`=协同、`测试环境`）→ 自检后删除 design.html → 从 Step 3 开始
+> - design.html 不存在 → 标准流程
 
 ### 9 步骤定义
 
@@ -76,7 +76,7 @@
 | 6 | **IT** | `06-it.md` | 每条用例贴关键日志（含 reqid）；协同模式不跳过 |
 | 7 | **Docs** | `07-docs.md` | 增量更新 `.harness/docs/` |
 | 8 | **Review** | `08-review.md` | 代码审查结果 |
-| 9 | **Commit** | `09-commit.md` | ① 询问 TAPD → ② 释放环境 → ③ TAPD 状态推进到「开发中」→ ④ 写 commit message → ⑤ 更新 overview（边界点 A）→ ⑥ 一次性 `git add` → ⑦ `git commit`（首次仅一次）→ ⑧ `git push` 产生 MR 触发 TAPD「开发中→CR」→ ⑨（可反复直到 MR 合入）amend 累积修复（一个 MR 一个 commit 原则） |
+| 9 | **Commit** | `09-commit.md` | ①（可选）询问 TAPD → ② 释放环境 → ③（可选）TAPD 状态推进 → ④ 写 commit message → ⑤ 更新 overview（边界点 A）→ ⑥ 一次性 `git add` → ⑦ `git commit`（首次仅一次）→ ⑧ `git push` 产生 MR → ⑨（可反复直到 MR 合入）amend 累积修复（一个 MR 一个 commit 原则） |
 
 ### 任务规模分支
 
@@ -114,19 +114,16 @@
 
 ### Commit 规范
 
-> 本节是 **SOP 入口**——`09-commit.md` 给出**清单 + 填表**，完整规则在团队 TAPD SKILL.md / `SKILL.md` 红线 4。
+> 本节是 **SOP 入口**——`09-commit.md` 给出**清单 + 填表**。
+> **TAPD 单号自 2026-07-31 起由「强制」改为「可选」**：提交**无需** TAPD id，commit-msg 钩子对缺失脚注仅做非阻塞提示。`ENFORCE_TAPD_FOOTER=1` 可恢复强制校验。
 
-**顺序**：① 询问 TAPD → ② 释放环境（团队环境管理 Skill）→ ③ TAPD 状态推进到「开发中」（团队 TAPD Skill）→ ④ 写 `09-commit.md` commit message → ⑤ 更新 `00-overview.md`（触发**边界点 A**）→ ⑥ 一次性 `git add`（代码 + plans 产物 + 00-overview.md + docs）→ ⑦ `git commit`（首次仅一次）→ ⑧ `git push` 产生 MR，触发 TAPD **开发中 → CR** → ⑨（可反复，直到 MR 合入）代码修复 amend → 合入后触发**边界点 B**。
+**顺序**：①（可选）询问 TAPD → ② 释放环境（团队环境管理 Skill）→ ③（可选）TAPD 状态推进 → ④ 写 `09-commit.md` commit message → ⑤ 更新 `00-overview.md`（触发**边界点 A**）→ ⑥ 一次性 `git add`（代码 + plans 产物 + 00-overview.md + docs）→ ⑦ `git commit`（首次仅一次）→ ⑧ `git push` 产生 MR → ⑨（可反复，直到 MR 合入）代码修复 amend → 合入后触发**边界点 B**。
 
-> **注意时序**：TAPD 状态"开发中 → CR"的触发条件是"MR 提交后自动"，只有 push（步骤 ⑧）产生 MR 才能触发，**不属于**步骤 ③ 的前置条件；步骤 ③ 只需推进到「开发中」。
->
 > **新增：禁止在边界点 A / B 之后修改 `00-overview.md` / `09-commit.md`**——步骤 ④+⑤ 完成即触发边界点 A（commit 内容定稿）；MR 合入即触发边界点 B（任务收尾）。两者之间**唯一例外**是步骤 ⑨ 代码修复走 amend——**仅改代码本身，不碰 md**；可反复不限次数，始终只有一个 commit；一旦合入就彻底冻结。完整规则见 `09-commit.md`「1. 执行顺序」节。
 
-**进入 commit 时必先询问 TAPD**（AI 必执行入口）：不要直接看 `00-overview.md` Meta 字段就当有 / 没有；没有则必须**引导用户创建**（默认推荐路径 A：AI 通过团队 TAPD skill 代创建）。4 种情况：① 用户给 ID ② AI 代创建 ③ 用户手动建后给 ID ④ 跳过（需记原因到关键决策备忘）。详见 `09-commit.md`「0.0 询问 TAPD」节。
+**TAPD 为可选项（AI 不再强制询问）**：进入 commit 时，若用户在团队流程中、已有 TAPD 需求单，可在 body 追加 `--<kind>=<id>` 脚注关联；**无 TAPD 时直接跳过**，无需记原因、无需创建占位单。仍想推进 TAPD 状态（团队流程时）：commit 之前调团队 TAPD Skill 把状态推到「开发中」，CR 由 push 后 MR 自动触发；TAPD 系统状态是唯一来源，不强制在 `09-commit.md` 回填。
 
-**TAPD 状态推进**（属于团队流程时强制）：commit 之前调团队 TAPD Skill 把状态从当前节点推到「开发中」（方案已评审 → 排期中 → 开发中）；**CR 由 push 后 MR 提交自动触发**，不在 commit 前完成，也**不强制**在 `09-commit.md` 里回填（TAPD 系统状态是唯一来源）。**任务收尾前**用团队 TAPD Skill 查一次 TAPD 真实状态，确认已落到 **CR**。详见 `09-commit.md`「0.2 TAPD 状态推进」节。
-
-**格式**：`<type>(<scope>): <subject>` + 脚注 `--<kind>=<id>`（**默认 `--story=<id>`**；bug fix 时改 `--bug=<id>`；CI 校验正则 `--(bug|story|task|test|other)=\d+`）。
+**格式**：`<type>(<scope>): <subject>`（Conventional Commits，强制）。TAPD 脚注 `--<kind>=<id>`（kind ∈ story/bug/task/test/other，纯数字 id）为**可选**；缺失时钩子仅提示不拦截。
 
 **一个 MR 一个 commit（铁律）**：本任务所在 MR 只能有一个 commit。任何修正（push 前 / SOP 走完后的 follow-up / push 元信息补登）一律走 `git commit --amend` 累积到原 commit，**严禁**新增第二个 commit。amend 后 push 必须用 `git push --force-with-lease`（**禁止**裸 `--force`）。详见 `09-commit.md`「2. amend 流程」节。
 
@@ -134,18 +131,20 @@
 
 ## 三、开发准则
 
-### 技术栈与验证方式（无构建、无 CI 编译）
+### 技术栈与验证方式（Vite 构建 + CI 校验）
 
-- **原生 ES 模块 JavaScript + 单页 `index.html` + `css/style.css`**，零依赖：无 package.json、无 node_modules、无打包器。**禁止**为新功能引入框架 / 构建工具 / npm 依赖。
-- 无编译步骤，验证 = 起本地静态服务后浏览器刷新：`python3 -m http.server 8000` 然后访问 `http://localhost:8000`。细节见 `.harness/docs/devops/development.md`。
-- **改动任何 js/css 后、提交前必须执行 `./bump-version.sh`**：它把 `index.html` 中所有 `?v=` 静态资源版本参数和 `wb-version` meta 更新为当前时间戳，否则浏览器缓存旧代码（历史上因此出过"线上表现与代码不一致"的故障，见 `.harness/docs/failures.md`）。
-- ⚠️ 陷阱：`bump-version.sh` 使用 BSD sed 语法（`sed -i ''`），在 Linux/WSL 上会报错；GNU sed 环境需按 `sed -i -E ...`（去掉空串参数）执行等效命令。
+> 2026-07-31 重构后，项目已从「零依赖手写」转为「Vue3 + Vite + TypeScript + Pinia」标准构建流水线（见 `.harness/design.html`）。原「零构建 / 禁止框架 / bump-version.sh」约束已作废（见第四节红线 2/3）。
+
+- **Vite + Vue3 + TypeScript + Pinia + Vue Router**，依赖经 `package.json` 管理；本地开发 `npm run dev`，构建 `npm run build`（含 `vue-tsc --noEmit` 类型检查）。
+- 验证 = 构建通过 + 类型检查零错误 + `npm test`（Vitest）全绿；浏览器验证：`npm run dev` 后访问 `http://localhost:8000`。
+- 缓存由 Vite 产物内容哈希保证（`app.<hash>.js`），**无需**手工 bump 版本脚本；`bump-version.sh` 已移除。
+- 提交前确保 `npm run build` 与 `npm test` 均通过；CI（GitHub Actions）会再次执行类型检查 + 测试 + 构建。
 
 ### 模块分层（改代码前先认清入口）
 
-- `js/store.js`：**唯一**数据层。localStorage 键 `wb.data.v1` / `wb.cfg.v1` / `wb.device.v1` / `wb.dirty` 只允许经它读写；变更即写盘并广播事件驱动渲染与同步。
-- `js/github.js`：**唯一**远端同步通道（GitHub Contents API ↔ 数据仓库 `data/workbench.json`，含脏标记、冲突合并、五步同步诊断）。新增持久化字段必须同步考虑双向合并逻辑。
-- `js/app.js` 路由/初始化，`js/todos.js` / `js/notes.js` 视图，`js/markdown.js` Markdown 渲染，`js/graph.js` 双向链接关系图，`js/util.js` DOM/转义工具。
+- `src/stores/data.ts`：**唯一**数据层。localStorage 键 `wb.data.v1` / `wb.cfg.v1` / `wb.manifestSha.v1` 只允许经它读写；变更即写盘并驱动同步引擎。
+- `src/services/github/*` + `src/services/sync/*`：**唯一**远端同步通道（GitHub Contents API ↔ `workbench-data` 仓库的 Markdown 文档库 `kb/*.md` + `manifest.json`，含脏标记、冲突合并、五步同步诊断）。新增持久化字段必须同步考虑双向合并逻辑。
+- `src/views/*` 视图、`src/components/*` 组件、`src/lib/*` 纯函数库（markdown / 双链 / slug）、`src/composables/*` 组合式。
 - `proxy/cloudflare-worker.js`：GitHub API **白名单透传**代理（用户自部署），令牌只经用户自己的 Worker。
 
 ### Git 钩子（本地强制）
@@ -170,8 +169,8 @@ ln -sf ../../scripts/pre_push_check.sh   .git/hooks/pre-push
 
 | # | 红线 | 后果 |
 |---|------|------|
-| 1 | **严禁 AI 主动读取/参考其它 `.harness/plans/<其他任务目录>/` 下的 md 产物**（含 `00-overview.md`、`01-clarify.md` … `09-commit.md`、`.harness/design.md` 等）；仅当用户**显式**指定「参考任务 X」时才可读指定的那一个任务目录，且参考内容禁止自动写回当前任务。详见上文「任务隔离（强制）」章节。 | 任务单一真相源被污染；跨任务上下文干扰当前任务设计；与并发开发冲突 |
-| 2 | **严禁引入构建工具 / 前端框架 / npm 依赖**（含 package.json、打包器、CDN 引入大型框架） | 破坏"零构建直出 GitHub Pages"的部署模型，项目失去可直接托管性 |
-| 3 | **改动 js/css 后未跑 `./bump-version.sh` 就提交发版** | 浏览器命中旧缓存，线上行为与仓库代码不一致，排障极其困难（已有前科） |
-| 4 | **绕过 `store.js` 直接读写 `wb.*` localStorage 键，或绕过 `github.js` 直接调 GitHub Contents API** | 脏标记 / 冲突合并 / 事件广播被绕开，引发同步竞态与数据丢失 |
-| 5 | **令牌以任何形式落库（`data/workbench.json`）、落日志或写入源码** | 数据仓库/代码仓库可能公开，Token 泄漏等于交出 GitHub 账户写权限 |
+| 1 | **严禁 AI 主动读取/参考其它 `.harness/plans/<其他任务目录>/` 下的 md 产物**（含 `00-overview.md`、`01-clarify.md` … `09-commit.md`、`.harness/design.html` 等）；仅当用户**显式**指定「参考任务 X」时才可读指定的那一个任务目录，且参考内容禁止自动写回当前任务。详见上文「任务隔离（强制）」章节。 | 任务单一真相源被污染；跨任务上下文干扰当前任务设计；与并发开发冲突 |
+| 2 | ~~（已移除）原「严禁引入构建工具 / 前端框架 / npm 依赖」~~ —— 2026-07-31 重构评审已批准引入 Vite + Vue3 + Pinia 等构建工具与框架（见 `.harness/design.html` §9 决策 3）。项目现采用标准构建流水线，不再要求"零构建直出"。 | 重构后该约束作废 |
+| 3 | ~~（已移除）原「改动 js/css 后未跑 `./bump-version.sh` 就提交发版」~~ —— Vite 产物自带内容哈希（`app.<hash>.js`），缓存失效由构建机制保证，无需手工 bump 脚本（见 design §4.3）。`bump-version.sh` 已从仓库移除。 | 重构后该约束作废 |
+| 4 | **绕过 `src/stores/data.ts` 直接读写 `wb.*` localStorage 键，或绕过 `src/services/github/*` / `src/services/sync/*` 直接调 GitHub Contents API** | 脏标记 / 冲突合并 / 事件广播被绕开，引发同步竞态与数据丢失 |
+| 5 | **令牌以任何形式落库（`data/workbench.json` / `wb.cfg.v1` 以外的任何位置）、落日志或写入源码** | 数据仓库/代码仓库可能公开，Token 泄漏等于交出 GitHub 账户写权限 |

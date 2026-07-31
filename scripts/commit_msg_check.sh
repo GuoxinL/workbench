@@ -99,16 +99,19 @@ if [[ "${DISABLE_CONV_COMMITS:-}" != "1" ]]; then
   fi
 fi
 
-# ── Check 5: TAPD 单号脚注（SOP 红线 4 强制）─────────────────────
+# ── Check 5: TAPD 单号脚注（可选，不再强制）─────────────────────
 # 格式：message body 任意行含 --<kind>=<id>
 #   kind: story（默认）/ bug（bug fix）/ task / test / other
 #   id:   纯数字
-# 正则与 agents.md.tmpl Commit 规范一致：--(bug|story|task|test|other)=\d+
-# 禁用：export DISABLE_TAPD_FOOTER=1（仅非本团队项目 / 无 TAPD 时，需在 00-overview.md 关键决策备忘记原因）
-if [[ "${DISABLE_TAPD_FOOTER:-}" != "1" ]]; then
+# 正则与 AGENTS.md Commit 规范一致：--(bug|story|task|test|other)=\d+
+#
+# 2026-07-31 起：TAPD 单号由「强制」改为「可选」——SOP 不再要求必须有 TAPD id。
+# 缺少脚注时仅给出【非阻塞提示】，不再拦截提交。
+# 仍想保留团队 TAPD 关联时，在 body 任意行追加脚注即可（格式同上）。
+if [[ "${ENFORCE_TAPD_FOOTER:-}" == "1" ]]; then
   FOOTER_PATTERN='--(bug|story|task|test|other)=[0-9]+'
   if ! grep -E -- "${FOOTER_PATTERN}" "${COMMIT_MSG_FILE}" >/dev/null 2>&1; then
-    error "Commit message 缺少 TAPD 单号脚注（SOP 红线 4 强制）。"
+    error "Commit message 缺少 TAPD 单号脚注（已显式开启 ENFORCE_TAPD_FOOTER=1）。"
     echo "" >&2
     echo -e "  ${CYAN}Expected format:${RESET} 在 commit message body 任意行追加脚注" >&2
     echo -e "    --story=<id>      # 默认（需求 / 故事）" >&2
@@ -117,23 +120,12 @@ if [[ "${DISABLE_TAPD_FOOTER:-}" != "1" ]]; then
     echo -e "    --test=<id>       # 测试相关" >&2
     echo -e "    --other=<id>      # 不属于以上分类" >&2
     echo "" >&2
-    echo -e "  ${CYAN}Examples:${RESET}" >&2
-    echo -e "    feat(user): add login throttling" >&2
-    echo -e "" >&2
-    echo -e "    --story=1234567" >&2
-    echo "" >&2
-    echo -e "    fix(parser): handle escaped quotes" >&2
-    echo -e "" >&2
-    echo -e "    --bug=7654321" >&2
-    echo "" >&2
-    echo -e "  ${CYAN}Your message:${RESET}" >&2
-    sed 's/^/    /' "${COMMIT_MSG_FILE}" >&2
-    echo "" >&2
     echo -e "  ${CYAN}Action:${RESET} git commit --amend（在 body 追加 '--<kind>=<id>' 脚注）" >&2
-    echo -e "  ${CYAN}Skip:${RESET} 非本团队项目 / 无 TAPD 时，在 00-overview.md 关键决策备忘记原因后，重设环境变量重试：" >&2
-    echo -e "    DISABLE_TAPD_FOOTER=1 git commit ..." >&2
+    echo -e "  ${CYAN}关闭强校：重设环境变量重试：unset ENFORCE_TAPD_FOOTER 后 git commit ..." >&2
     exit 1
   fi
+elif ! grep -E -- "--(bug|story|task|test|other)=[0-9]+" "${COMMIT_MSG_FILE}" >/dev/null 2>&1; then
+  warn "Commit message 未包含 TAPD 单号脚注（--<kind>=<id>）。当前 SOP 下 TAPD 为可选项，提交仍可继续；如需关联团队 TAPD 请在 body 追加脚注。"
 fi
 
 exit 0

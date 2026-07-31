@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>个人工作台 —— 重构设计文档</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.mermaid) {
+      mermaid.initialize({ startOnLoad: true, theme: 'default', flowchart: { htmlLabels: true }, securityLevel: 'loose' });
+    }
+  });
+</script>
+<style>
+  :root {
+    --c-blue:   #3b82f6;
+    --c-red:    #ef4444;
+    --c-amber:  #f59e0b;
+    --c-green:  #22c55e;
+    --c-purple: #a855f7;
+    --c-teal:   #14b8a6;
+    --c-pink:   #ec4899;
+    --c-slate:  #64748b;
+    --bg:       #f8fafc;
+    --fg:       #1e293b;
+    --muted:    #64748b;
+    --border:   #e2e8f0;
+    --code-bg:  #f1f5f9;
+    --accent:   #2563eb;
+    --maxw:     960px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 32px 20px 80px; }
+
+  header.doc {
+    border-bottom: 3px solid var(--accent);
+    padding-bottom: 16px;
+    margin-bottom: 8px;
+  }
+  header.doc h1 { font-size: 28px; margin: 0 0 8px; }
+  header.doc .meta { color: var(--muted); font-size: 13px; }
+  header.doc .status {
+    display: inline-block; margin-top: 10px; padding: 4px 12px;
+    background: #dcfce7; color: #166534; border-radius: 999px; font-size: 13px; font-weight: 600;
+  }
+  blockquote {
+    border-left: 4px solid var(--accent); background: #eff6ff;
+    margin: 16px 0; padding: 10px 16px; color: #1e3a8a; border-radius: 0 8px 8px 0;
+  }
+  blockquote p { margin: 4px 0; }
+
+  h2 { font-size: 22px; margin: 40px 0 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  h3 { font-size: 18px; margin: 28px 0 10px; color: #0f172a; }
+  h4 { font-size: 15.5px; margin: 20px 0 8px; color: #334155; }
+
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+
+  code {
+    background: var(--code-bg); padding: 2px 6px; border-radius: 5px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 13px;
+  }
+  pre {
+    background: #0f172a; color: #e2e8f0; padding: 16px 18px; border-radius: 10px;
+    overflow-x: auto; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; color: inherit; font-size: 13px; }
+
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 13.5px; }
+  thead th { background: #1e293b; color: #fff; text-align: left; padding: 9px 11px; }
+  thead th:first-child { border-top-left-radius: 8px; }
+  thead th:last-child  { border-top-right-radius: 8px; }
+  tbody td { border-bottom: 1px solid var(--border); padding: 8px 11px; vertical-align: top; }
+  tbody tr:nth-child(even) { background: #f8fafc; }
+  tbody tr:hover { background: #eff6ff; }
+
+  .mermaid { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin: 16px 0; overflow-x: auto; }
+
+  .palette { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .swatch { width: 64px; height: 34px; border-radius: 8px; color: #fff; font-size: 11px;
+            display: flex; align-items: center; justify-content: center; font-weight: 600; }
+
+  .callout { padding: 12px 16px; border-radius: 10px; margin: 14px 0; font-size: 14px; }
+  .callout.warn { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+  .callout.ok   { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+  .callout.info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+
+  .toc { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin: 20px 0; }
+  .toc h3 { margin-top: 0; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .toc ol { columns: 2; }
+  @media (max-width: 640px) { .toc ol { columns: 1; } }
+
+  .footnote { color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--border); margin-top: 40px; padding-top: 12px; }
+  .hl { background: #fef9c3; padding: 0 3px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <h1>个人工作台 —— 重构设计文档</h1>
+  <div class="meta">日期：2026-07-31 ｜ 作者：AI 协作产出，待 Guoxin.Liu 评审<br />
+  基线 commit：<code>cf46195</code> ｜ 现状架构详见 <a href="docs/architecture.md">architecture.md</a></div>
+  <div class="status">状态：已评审（4 项决策已确认，见第 9 节）；后续已增补：Markdown 文档库存储、知识库概念重命名（Note→Article）、VitePress 发布、标签云（TAG1–5）</div>
+</header>
+
+<nav class="toc">
+  <h3>目录</h3>
+  <ol>
+    <li><a href="#s1">背景与目标</a></li>
+    <li><a href="#s2">需求识别（现状功能全清单）</a></li>
+    <li><a href="#s3">重构方案</a></li>
+    <li><a href="#s3-4">3.4 架构图与数据流</a></li>
+    <li><a href="#s4">关键决策与权衡</a></li>
+    <li><a href="#s5">实施顺序</a></li>
+    <li><a href="#s6">测试策略</a></li>
+    <li><a href="#s7">收益与代价</a></li>
+    <li><a href="#s8">风险与应对</a></li>
+    <li><a href="#s9">需要你拍板的事项</a></li>
+  </ol>
+</nav>
+
+<h2 id="s1">1. 背景与目标</h2>
+
+<h3>1.1 为什么要重构</h3>
+<p>现有实现是一套<strong>完全手写的零依赖前端</strong>：Markdown 渲染器、力导向图谱、DOM 操作、状态管理、事件总线全部自造，共 3185 行。这套方案在项目启动期是对的——零构建、零依赖、push 即上线，卖点鲜明。</p>
+<p>但它现在有三个结构性问题：</p>
+<table>
+  <thead><tr><th>问题</th><th>具体表现</th><th>后果</th></tr></thead>
+  <tbody>
+    <tr><td><strong>无验证手段</strong></td><td>零测试、零类型检查、零 lint</td><td>LWW 合并这类核心算法一旦回归会<strong>静默丢数据</strong>，且多端异步场景人工极难复现</td></tr>
+    <tr><td><strong>重复造轮子</strong></td><td><code>markdown.js</code> 203 行、<code>graph.js</code> 202 行都在做成熟库已解决的事</td><td>维护成本高，功能受限（如标题只支持到 h3、图谱 O(n²)）</td></tr>
+    <tr><td><strong>全局命名空间耦合</strong></td><td>8 个 IIFE 挂 <code>window.WB</code>，依赖靠 <code>index.html</code> 的 <code>&lt;script&gt;</code> 行序隐式维护</td><td>改动无静态检查，错误只在运行时暴露；单个文件最大 483 行，修改需通读全文</td></tr>
+  </tbody>
+</table>
+
+<h3>1.2 本次重构的目标</h3>
+<ol>
+  <li><strong>用成熟生态替换手写轮子</strong>，把精力集中在项目真正的差异化价值上（GitHub 同步引擎）</li>
+  <li><strong>建立 AI 可用的反馈闭环</strong>——类型检查 + 单元测试 + 构建校验，让"改完不知道对不对"成为过去时</li>
+  <li><strong>功能严格对齐现有实现</strong>，不增不减（详见第 2 节清单，即验收基线）</li>
+</ol>
+
+<h3>1.3 明确的非目标</h3>
+<ul>
+  <li>❌ 不新增业务功能（第 9 节确认后可另议）</li>
+  <li>❌ 不改变产品定位（仍是零后端、数据主权归用户的个人工具）</li>
+  <li>❌ 不改 <code>proxy/cloudflare-worker.js</code>（独立组件，与前端重构无关，原样保留）</li>
+</ul>
+
+<h2 id="s2">2. 需求识别（现状功能全清单）</h2>
+<blockquote><p>本节从代码逐行反推而来，是重构的<strong>验收基线</strong>。每项后标注现状实现位置，重构后须逐项对照验收。</p></blockquote>
+
+<h3>2.1 待办管理</h3>
+<table>
+  <thead><tr><th>#</th><th>功能</th><th>行为细节</th><th>现状位置</th></tr></thead>
+  <tbody>
+    <tr><td>T1</td><td>快速创建</td><td>输入框回车或点「添加」；空标题时聚焦不创建；创建后清空并保持聚焦</td><td><code>todos.js:119-127</code></td></tr>
+    <tr><td>T2</td><td>8 色分类</td><td>blue 常规 / red 紧急 / amber 重要 / green 推进中 / purple 思考 / teal 协作 / pink 个人 / slate 待定，各含主色与背景色</td><td><code>store.js:15-24</code></td></tr>
+    <tr><td>T3</td><td>3 档状态</td><td>todo 待办 / doing 进行中 / done 已完成</td><td><code>store.js:28</code></td></tr>
+    <tr><td>T4</td><td>卡片排序</td><td>未完成在前，同组内按 <code>updatedAt</code> 倒序</td><td><code>todos.js:143-147</code></td></tr>
+    <tr><td>T5</td><td>状态筛选</td><td>全部 / 待办 / 进行中 / 已完成 四段切换</td><td><code>todos.js:30-35</code></td></tr>
+    <tr><td>T6</td><td>颜色筛选</td><td>点击色块只看该色，<strong>再点同色取消</strong>；首块为「全部颜色」渐变块</td><td><code>todos.js:97-116</code></td></tr>
+    <tr><td>T7</td><td>关键词搜索</td><td>匹配标题 + 描述，大小写不敏感，<strong>160ms 防抖</strong></td><td><code>todos.js:37-40</code></td></tr>
+    <tr><td>T8</td><td>一键切换完成</td><td>卡片左侧圆圈，done ↔ todo 互切</td><td><code>todos.js:178-185</code></td></tr>
+    <tr><td>T9</td><td>编辑抽屉</td><td>标题 / 描述 / 颜色 / 状态 / 截止日期 / 关联笔记展示</td><td><code>todos.js:237-260</code></td></tr>
+    <tr><td>T10</td><td>抽屉快捷键</td><td><code>Esc</code> 关闭、<code>Cmd/Ctrl+Enter</code> 保存</td><td><code>todos.js:70-73</code></td></tr>
+    <tr><td>T11</td><td>遮罩关闭</td><td>点击遮罩空白区关闭（<code>mousedown</code> 判定 target 自身）</td><td><code>todos.js:44-46</code></td></tr>
+    <tr><td>T12</td><td>逾期高亮</td><td><code>due &lt; 今天</code> 且状态非 done → 显示「已逾期」红色标签，否则显示「截止 日期」</td><td><code>todos.js:218-224</code></td></tr>
+    <tr><td>T13</td><td>删除确认</td><td>卡片迷你按钮与抽屉删除均需 <code>confirm</code>，文案含标题</td><td><code>todos.js:200</code>、<code>todos.js:52-58</code></td></tr>
+    <tr><td>T14</td><td>空状态区分</td><td>有筛选条件时提示「没有符合条件的待办」，无条件时提示「还没有待办…」</td><td><code>todos.js:150-159</code></td></tr>
+    <tr><td>T15</td><td>保存校验</td><td>标题为空时 toast 报错且不保存</td><td><code>todos.js:270</code></td></tr>
+  </tbody>
+</table>
+
+<h3>2.2 知识库文章（原称「笔记」）</h3>
+<blockquote><p>概念重命名：本节原称「笔记」，现统一称「知识库文章」；内部类型 <code>Note</code> → <code>Article</code>；底层 <code>[[标题]]</code> 双链寻址不变。功能 ID（N1–N10）保留作稳定引用。</p></blockquote>
+<table>
+  <thead><tr><th>#</th><th>功能</th><th>行为细节</th><th>现状位置</th></tr></thead>
+  <tbody>
+    <tr><td>N1</td><td>列表展示</td><td>按 <code>updatedAt</code> 倒序；显示更新时间、出链数 <code>↗n</code>、入链数 <code>↙n</code>、「来自待办」徽章</td><td><code>notes.js:103-141</code></td></tr>
+    <tr><td>N2</td><td>搜索</td><td>匹配标题 + 正文，<strong>150ms 防抖</strong></td><td><code>notes.js:24-27</code></td></tr>
+    <tr><td>N3</td><td>新建</td><td>默认名「未命名笔记」；<strong>同名自动追加 <code> 2</code>/<code> 3</code></strong>；建后进编辑模式并全选标题</td><td><code>notes.js:307-319</code></td></tr>
+    <tr><td>N4</td><td>阅读/编辑双模式</td><td>阅读只显示预览；编辑时 textarea + 预览并存（桌面分栏）</td><td><code>notes.js:245-253</code></td></tr>
+    <tr><td>N5</td><td>自动保存</td><td>正文/标题输入 <strong>700ms 防抖</strong>；失焦、切笔记、返回列表、同步前均 <code>flushNow()</code> 立即落盘</td><td><code>notes.js:18,58-66,145</code></td></tr>
+    <tr><td>N6</td><td>编辑防打断</td><td>编辑中置 <code>suppressRender</code>，外部数据变更只刷列表不重渲染详情</td><td><code>notes.js:16,473-480</code></td></tr>
+    <tr><td>N7</td><td>元信息</td><td>创建时间 · 更新时间 · <strong>字数（去空白字符计数）</strong> · 源自待办（标题截断 20 字）</td><td><code>notes.js:173-181</code></td></tr>
+    <tr><td>N8</td><td>标题去重</td><td>改名撞已有标题时自动改为 <code>原名 (2)</code> 并 toast 告知</td><td><code>notes.js:266-273</code></td></tr>
+    <tr><td>N9</td><td>删除</td><td><code>confirm</code> 确认，提示「其它笔记中的引用将标记为未创建」；删除后解除待办关联</td><td><code>notes.js:39-48</code>、<code>store.js:227-230</code></td></tr>
+    <tr><td>N10</td><td>移动端布局</td><td><code>.detail</code> 类切换列表/详情视图，含返回按钮</td><td><code>notes.js:34-37</code></td></tr>
+  </tbody>
+</table>
+
+<h3>2.3 双向链接（项目核心特色）</h3>
+<table>
+  <thead><tr><th>#</th><th>功能</th><th>行为细节</th><th>现状位置</th></tr></thead>
+  <tbody>
+    <tr><td>L1</td><td>语法</td><td><code>[[标题]]</code> 与 <code>[[标题\|别名]]</code></td><td><code>markdown.js:8</code></td></tr>
+    <tr><td>L2</td><td>标题寻址</td><td>用 <code>slug()</code> 归一化匹配：trim + 转小写 + 空白折叠</td><td><code>util.js</code> / <code>store.js:200-203</code></td></tr>
+    <tr><td>L3</td><td>出链面板</td><td>「引用了」列出目标笔记 + 正文摘要（24 字）</td><td><code>notes.js:211-218</code></td></tr>
+    <tr><td>L4</td><td>入链面板</td><td>「被引用」列出来源笔记 + <strong>引用所在行的上下文摘录（60 字，别名替换后）</strong></td><td><code>notes.js:234-241</code>、<code>markdown.js:28-41</code></td></tr>
+    <tr><td>L5</td><td>未创建引用</td><td>引用了不存在的标题 → 出链区橙色「＋ 标题（未创建）」，<strong>点击立即创建并跳转</strong></td><td><code>notes.js:219-229</code></td></tr>
+    <tr><td>L6</td><td>计数显示</td><td>出链数附带 <code>(+n 待建)</code>，入链数纯计数</td><td><code>notes.js:205-206</code></td></tr>
+    <tr><td>L7</td><td>预览区跳转</td><td>点击 <code>.wikilink</code> 跳转；目标不存在时 <code>confirm</code> 询问创建</td><td><code>notes.js:69-74,321-329</code></td></tr>
+    <tr><td>L8</td><td>缺失链接样式</td><td>不存在的目标渲染为 <code>.wikilink.missing</code></td><td><code>markdown.js:55-60</code></td></tr>
+    <tr><td>L9</td><td>忽略自引用</td><td>笔记引用自身不计入图</td><td><code>notes.js:91</code></td></tr>
+    <tr><td>L10</td><td>引用去重</td><td>同一目标在同篇中多次引用只算一条</td><td><code>markdown.js:20-21</code></td></tr>
+    <tr><td><strong>L11</strong></td><td><strong>改标题联动改引用</strong></td><td>改标题时自动重写<strong>其它所有笔记</strong>中的 <code>[[旧标题]]</code>（保留别名部分），包在 <code>batch()</code> 里只触发一次同步，完成后 toast 告知影响篇数</td><td><code>notes.js:286-304</code></td></tr>
+  </tbody>
+</table>
+
+<h3>2.4 <code>[[</code> 自动补全</h3>
+<table>
+  <thead><tr><th>#</th><th>功能</th><th>行为细节</th><th>现状位置</th></tr></thead>
+  <tbody>
+    <tr><td>A1</td><td>触发</td><td>输入第二个 <code>[</code> 时<strong>自动补全为 <code>[[]]</code></strong> 并把光标置于中间</td><td><code>notes.js:341-354</code></td></tr>
+    <tr><td>A2</td><td>候选列表</td><td>排除当前笔记，按关键词过滤，按 <code>updatedAt</code> 倒序，<strong>最多 8 条</strong></td><td><code>notes.js:367-370</code></td></tr>
+    <tr><td>A3</td><td>新建选项</td><td>输入的标题不存在时追加「＋ 新建「X」」选项</td><td><code>notes.js:373-375</code></td></tr>
+    <tr><td>A4</td><td>键盘操作</td><td><code>↑</code>/<code>↓</code> 移动（循环）、<code>Enter</code>/<code>Tab</code> 应用、<code>Esc</code> 关闭</td><td><code>notes.js:333-339</code></td></tr>
+    <tr><td>A5</td><td>光标跟随定位</td><td><strong>用镜像 div 测算光标像素坐标</strong>；面板超出下边界时翻转到上方；右侧防溢出</td><td><code>notes.js:398-431</code></td></tr>
+    <tr><td>A6</td><td>智能闭合</td><td>光标后已有 <code>]]</code> 则不重复插入</td><td><code>notes.js:444-447</code></td></tr>
+    <tr><td>A7</td><td>选新建即创建</td><td>选中「新建」项时立刻创建该笔记并 toast</td><td><code>notes.js:454-459</code></td></tr>
+  </tbody>
+</table>
+
+<h3>2.5 Markdown 渲染</h3>
+<p>支持语法：标题（<code>#</code>~<code>######</code>，<strong>当前实现降级到 h3 封顶</strong>）、粗体、斜体、删除线、<code>==高亮==</code>、行内代码、围栏代码块（带 lang 属性）、引用块（<strong>递归渲染</strong>）、无序列表、有序列表（<code>1.</code> 与 <code>1)</code>）、任务列表（<code>[x]</code>/<code>[ ]</code>，渲染为 disabled checkbox）、表格（含对齐分隔行）、分隔线、图片、链接、<strong>裸 URL 自动识别</strong>。</p>
+<p><strong>安全策略</strong>：<code>inline()</code> 第一行即整体 <code>esc()</code> 转义，再套规则；行内代码先占位保护避免内部内容被二次处理。（<code>markdown.js:44-81</code>）</p>
+
+<h3>2.6 关联图谱</h3>
+<table>
+  <thead><tr><th>#</th><th>功能</th><th>现状位置</th></tr></thead>
+  <tbody>
+    <tr><td>G1</td><td>力导向布局（斥力 + 引力 + 向心 + 阻尼，260 帧模拟）</td><td><code>graph.js:86-125</code></td></tr>
+    <tr><td>G2</td><td>SVG 渲染节点与连线</td><td><code>graph.js:133-155</code></td></tr>
+    <tr><td>G3</td><td>节点拖拽</td><td><code>graph.js</code></td></tr>
+    <tr><td>G4</td><td>视图缩放</td><td><code>graph.js</code></td></tr>
+    <tr><td>G5</td><td>点击节点跳转对应笔记</td><td><code>graph.js:196</code></td></tr>
+    <tr><td>G6</td><td>「重新布局」按钮</td><td><code>index.html:136</code></td></tr>
+    <tr><td>G7</td><td>空状态提示「还没有笔记之间的引用关系」</td><td><code>index.html:140</code></td></tr>
+    <tr><td>G8</td><td>切到图谱视图时才渲染（延迟 30ms）</td><td><code>app.js:74</code></td></tr>
+  </tbody>
+</table>
+
+<h3>2.7 GitHub 同步（项目核心资产）</h3>
+<table>
+  <thead><tr><th>#</th><th>功能</th><th>行为细节</th><th>现状位置</th></tr></thead>
+  <tbody>
+    <tr><td>S1</td><td>配置项</td><td>仓库 <code>owner/repo</code>、分支、数据文件路径、PAT、API 代理地址、轮询间隔、启用开关</td><td><code>store.js:31-39</code></td></tr>
+    <tr><td>S2</td><td>空值双重回落</td><td>加载时逐项回落 + 引擎侧 <code>normCfg()</code> 再回落，防止历史脏数据把默认值盖成空</td><td><code>store.js:74-77</code>、<code>github.js:34-41</code></td></tr>
+    <tr><td>S3</td><td>自动推送</td><td>任何变更后 <strong>1.5s 防抖</strong> 推送</td><td><code>github.js:237</code></td></tr>
+    <tr><td>S4</td><td>定时拉取</td><td>默认 20s（钳制 5–300s）；<code>document.hidden</code> 时跳过</td><td><code>github.js:240-249</code></td></tr>
+    <tr><td>S5</td><td>前台/网络恢复即同步</td><td><code>visibilitychange</code> + <code>online</code> 事件触发静默同步</td><td><code>app.js:44-47</code></td></tr>
+    <tr><td>S6</td><td>手动同步</td><td>点顶栏胶囊，先 flush 编辑器再非静默同步</td><td><code>app.js:95-99</code></td></tr>
+    <tr><td>S7</td><td><strong>逐条 LWW 合并</strong></td><td>以 <code>id</code> 为主键；远端有本地无 → 插入；两端都有 → <code>updatedAt</code> 大者胜；合并后按 <code>createdAt</code> 倒序</td><td><code>store.js:265-294</code></td></tr>
+    <tr><td>S8</td><td><strong>软删除墓碑</strong></td><td>删除置 <code>deleted:true</code> 并刷新 <code>updatedAt</code>，保证删除可传播</td><td><code>store.js:186-192</code></td></tr>
+    <tr><td>S9</td><td><strong>墓碑清理</strong></td><td>序列化时丢弃 30 天前的墓碑</td><td><code>store.js:312-321</code></td></tr>
+    <tr><td>S10</td><td><strong>sha 乐观锁 + 冲突重试</strong></td><td>PUT 带 sha；遇 409/422 重新拉取合并后重试，<strong>最多 3 次</strong>，退避 <code>350ms × attempt</code></td><td><code>github.js:139-143,192-197</code></td></tr>
+    <tr><td>S11</td><td><strong>并发排队</strong></td><td>静默调用复用进行中的 Promise；用户主动调用排队等完再跑一次</td><td><code>github.js:220-232</code></td></tr>
+    <tr><td>S12</td><td>请求超时</td><td>统一 12s（<code>AbortController</code>），诊断步骤 10s</td><td><code>github.js:67-91</code></td></tr>
+    <tr><td>S13</td><td>错误码映射</td><td>401 令牌失效 / 403+ratelimit 频率超限 / 404 仓库或权限问题，均中文化</td><td><code>github.js:93-103</code></td></tr>
+    <tr><td>S14</td><td>网络错误识别</td><td>用 <code>e.name === 'TypeError'</code> 判定（跨 realm 安全），标记 <code>err.net</code></td><td><code>github.js:80-81</code></td></tr>
+    <tr><td>S15</td><td>状态机 + 顶栏指示</td><td><code>idle</code>/<code>syncing</code>/<code>ok</code>/<code>error</code>/<code>off</code> → 胶囊四态（同步中/已同步/待同步/同步失败/本地模式）</td><td><code>app.js:102-118</code></td></tr>
+    <tr><td>S16</td><td>相对时间刷新</td><td>每 30s 刷新一次「已同步 X」的相对时间</td><td><code>app.js:121-124</code></td></tr>
+    <tr><td>S17</td><td>测试连接</td><td><code>GET /repos/{o}/{r}</code> 并<strong>校验 <code>permissions.push</code></strong></td><td><code>github.js:261-265</code></td></tr>
+    <tr><td>S18</td><td><strong>五步诊断</strong></td><td>配置检查 → 网络连通 → 令牌有效性 → 仓库访问与写权限 → 数据文件；<strong>逐步回调渲染，失败即中断并给出处置建议</strong></td><td><code>github.js:284-368</code></td></tr>
+    <tr><td>S19</td><td>导出备份</td><td>下载 <code>workbench-YYYY-MM-DD.json</code></td><td><code>app.js:188-195</code></td></tr>
+    <tr><td>S20</td><td>离场保护</td><td><code>beforeunload</code> 先 flush，若 dirty 且同步已启用则弹原生确认框</td><td><code>app.js:48-55</code></td></tr>
+    <tr><td>S21</td><td>保存配置流程</td><td>校验 <code>owner/repo</code> 格式与 token 非空 → 保存 → 重启轮询 → 立即关窗 → toast 播报同步结果</td><td><code>app.js:168-186</code></td></tr>
+    <tr><td>S22</td><td>本地模式降级</td><td>配置无效时进入 <code>off</code>，<strong>功能完整仅不同步</strong></td><td><code>github.js:222</code></td></tr>
+  </tbody>
+</table>
+
+<h3>2.8 全局与其它</h3>
+<table>
+  <thead><tr><th>#</th><th>功能</th><th>现状位置</th></tr></thead>
+  <tbody>
+    <tr><td>X1</td><td>三视图路由（待办/笔记/图谱），localStorage 记忆上次视图</td><td><code>app.js:68-80</code></td></tr>
+    <tr><td>X2</td><td>移动端底部导航（与顶部 tabs 同步高亮）</td><td><code>app.js:63-65</code></td></tr>
+    <tr><td>X3</td><td>首次使用播种示例数据（3 篇互相引用的笔记 + 4 条待办），<code>wb.seeded</code> 标记只播一次</td><td><code>app.js:22-25,269-286</code></td></tr>
+    <tr><td>X4</td><td>Toast 通知（ok / err / info 三档）</td><td><code>util.js:105-116</code></td></tr>
+    <tr><td>X5</td><td>PWA manifest（添加到主屏幕）</td><td><code>manifest.json</code></td></tr>
+    <tr><td>X6</td><td>设置面板显示当前版本号</td><td><code>app.js:204-206</code></td></tr>
+    <tr><td>X7</td><td>待办 → 笔记转换（带入颜色/状态/截止日期作引用块 + 描述 + 固定骨架「## 记录 / ## 关联」，标题去重，双向记录 <code>noteId</code>/<code>fromTodo</code>）</td><td><code>store.js:235-260</code></td></tr>
+  </tbody>
+</table>
+
+<h3>2.9 非功能需求</h3>
+<ul>
+  <li><strong>零后端</strong>：数据主权完全归用户，不经任何第三方服务器</li>
+  <li><strong>静态托管</strong>：GitHub Pages 可直接部署</li>
+  <li><strong>移动端适配</strong>：手机浏览器可用，支持添加到主屏幕</li>
+  <li><strong>令牌安全</strong>：不落库（<code>serialize()</code> 只输出 4 个字段）、不落日志、不硬编码、输入框 <code>type=password</code></li>
+  <li><strong>XSS 防护</strong>：所有用户内容渲染前转义</li>
+  <li><strong>离线可用</strong>：同步未配置或网络不可达时，本地模式功能完整</li>
+</ul>
+
+<h3>2.10 数据模型（Markdown 文档库，见 4.1）</h3>
+<blockquote><p>存储形态变更：知识库文章不再是 <code>WorkbenchData.notes</code> 数组里的一行，而是 <code>workbench-data</code> 仓库中的 Markdown 文件（<code>kb/&lt;slug&gt;.md</code>）；待办保留为结构化 <code>todos.json</code>。本地 <code>wb.data.v1</code> 仍可缓存一份快照加速首屏。</p></blockquote>
+<p><strong>文章文件 <code>kb/&lt;slug&gt;.md</code></strong>（frontmatter + 正文，文件名用 <code>slug(标题)</code> 与标题寻址一致）：</p>
+<pre><code>---
+id: string
+title: string
+createdAt: number
+updatedAt: number
+deleted: boolean          # 软删除墓碑，保留文件以传播删除
+fromTodo: string          # 来源待办 id
+color: string             # 由待办转来时保留色板
+tags: string[]            # 新增：知识库标签
+publish: boolean          # 是否纳入公开站点
+aliases: string[]
+---
+正文 Markdown，支持 ==高亮== 与 [[其它文章标题]]</code></pre>
+<pre><code>// 知识库文章（对应一个 .md 文件，由 frontmatter + 正文解析而来）
+interface Article {
+  id: string; title: string; content: string   // content = 正文（不含 frontmatter）
+  fromTodo: string
+  tags: string[]                               // 新增：知识库标签
+  createdAt: number; updatedAt: number
+  deleted: boolean
+}
+
+// 待办（结构化，单文件 todos.json，不发布）
+interface Todo {
+  id: string; title: string; desc: string
+  color: ColorKey                        // 8 色枚举
+  status: 'todo' | 'doing' | 'done'
+  due: string                            // 'YYYY-MM-DD'，空串表示无
+  noteId: string                         // 关联知识库文章 id，空串表示无
+  createdAt: number; updatedAt: number
+  deleted: boolean                       // 软删除墓碑
+}
+
+// 索引导航（轻量，避免每次拉全量；per-file LWW 的 sha 缓存）
+interface Manifest {
+  version: 1
+  updatedAt: number
+  articles: Record&lt;string, { id: string; title: string; updatedAt: number; deleted: boolean; sha: string }&gt;
+  todosSha: string
+}
+
+// 仅存本地，永不上传
+interface Config {
+  enabled: boolean; repo: string; branch: string; path: string
+  token: string; poll: number; apiBase: string
+}</code></pre>
+
+<h3>2.11 标签与标签云（知识库新增能力）</h3>
+<blockquote><p>概念：知识库文章可打彩色标签；标签云是字号随文章数增大、彩色、动态漂浮的可视化入口，点击标签筛选知识库列表。</p></blockquote>
+<table>
+  <thead><tr><th>#</th><th>功能</th><th>行为细节</th><th>现状位置</th></tr></thead>
+  <tbody>
+    <tr><td>TAG1</td><td>文章打标签</td><td>每篇知识库文章 frontmatter <code>tags: string[]</code>，可多标签；编辑时增删</td><td>新增</td></tr>
+    <tr><td>TAG2</td><td>标签展示</td><td>文章详情/卡片以彩色 <code>el-tag</code> 展示本文标签（8 色板或按标签 hash 取色）</td><td>新增（Element Plus <code>el-tag</code>）</td></tr>
+    <tr><td>TAG3</td><td>标签云</td><td>独立「标签云」视图：字号随标签下文章数增大、彩色、CSS <code>@keyframes</code> 动态漂浮；点击标签筛选知识库列表</td><td>新增（<code>d3-cloud</code> 布局 + CSS 动画）</td></tr>
+    <tr><td>TAG4</td><td>标签筛选</td><td>点标签 → 知识库列表仅显示带该标签的文章（复用现有筛选机制，扩展 <code>tag</code> 维度）</td><td>新增</td></tr>
+    <tr><td>TAG5</td><td>发布站标签页</td><td>VitePress 生成 <code>/tags/</code> 页：词云 + 点击跳转到该标签文章列表（<code>createContentLoader</code> 扫 frontmatter 聚合）</td><td>新增（§3.5）</td></tr>
+  </tbody>
+</table>
+
+<h2 id="s3">3. 重构方案</h2>
+
+<h3>3.1 技术选型</h3>
+<blockquote><p>版本为 2026-07-31 查询的 npm latest。初始化时以脚手架实际生成为准。</p></blockquote>
+<table>
+  <thead><tr><th>用途</th><th>选型</th><th>版本</th><th>替换掉什么</th></tr></thead>
+  <tbody>
+    <tr><td>框架</td><td>Vue 3</td><td><code>3.5.40</code></td><td>全部手写 DOM 操作与全量重渲染</td></tr>
+    <tr><td>构建</td><td>Vite</td><td><code>8.2.0</code></td><td><code>bump-version.sh</code> + <code>?v=</code> 缓存机制</td></tr>
+    <tr><td>语言</td><td>TypeScript</td><td><strong><code>~5.9.3</code></strong>（见下方说明）</td><td>无类型的裸 JS</td></tr>
+    <tr><td>状态</td><td>Pinia</td><td><code>4.0.2</code></td><td><code>store.js</code> 的事件总线</td></tr>
+    <tr><td>路由</td><td>Vue Router</td><td><code>5.2.0</code>（<strong>hash 模式</strong>）</td><td><code>app.js</code> 的 class 切换 + localStorage 记忆</td></tr>
+    <tr><td>测试</td><td>Vitest</td><td><code>4.1.10</code></td><td>无</td></tr>
+    <tr><td>Markdown</td><td>marked</td><td><code>18.0.7</code></td><td><code>markdown.js</code> 的块级/行内渲染器</td></tr>
+    <tr><td>消毒</td><td>DOMPurify</td><td><code>3.4.12</code></td><td><code>util.esc()</code> 全量转义</td></tr>
+    <tr><td>图布局</td><td>d3-force</td><td><code>3.0.0</code></td><td><code>graph.js</code> 的手写力导向</td></tr>
+    <tr><td>工具集</td><td>VueUse</td><td>latest</td><td><code>util.js</code> 的 debounce 等</td></tr>
+    <tr><td>UI 组件</td><td>Element Plus</td><td>latest</td><td>手写抽屉/开关/段控件/色板/toast/confirm 等</td></tr>
+    <tr><td>词云布局</td><td>d3-cloud</td><td><code>3.0.0</code></td><td>无（新增标签云需求，见 2.11 / TAG3）</td></tr>
+    <tr><td>发布</td><td>VitePress</td><td>latest</td><td>无（新增公开发布能力，见 §3.5）</td></tr>
+  </tbody>
+</table>
+<p><strong>为什么 TypeScript 锁 5.9 而不用 latest 的 7.0.2</strong>：TS 7.0.2 发布于 2026-07-08（距今 3 周），是编译器的 Go 原生重写版。<code>vue-tsc@3.3.8</code> 虽声明 <code>peerDependencies: typescript &gt;=5.0.0</code>，但 Volar 工具链对 tsgo 的适配需要观察期。<strong>建议初始化后实测一次 TS 7，通过则升级，不通过用 5.9 LTS</strong>——这个验证成本只有几分钟，收益是避免踩在生态迁移期的坑上。</p>
+<p><strong>引入 Element Plus 作为 UI 组件库</strong>（经评审确认，推翻原"不引入"建议）。理由：抽屉、开关、段控件、确认框、Toast、Tabs 等通用件库已成熟，用库能省下大量样板并提升可维护性；组件库按需自动导入（unplugin-vue-components + unplugin-auto-import）控制体积。<strong>仍自定义的部分</strong>：8 色分类色板与卡片视觉是业务专属，组件库不提供，保持手写；主题通过覆盖 Element Plus 设计变量（CSS 变量）与现有 <code>variables.css</code> 融合，观感不漂移。文章标签展示复用 Element Plus 的 <code>el-tag</code>（彩色 chip，TAG2），但「标签云」字号随频次变化 + 动态漂浮的可视化（TAG3）非标准控件，需自定义（见 §3.3.7）。</p>
+
+<h3>3.2 目标架构</h3>
+<pre><code>workbench/
+├── index.html                    ← Vite 入口（不再手写 script 标签）
+├── package.json / vite.config.ts / tsconfig.json / vitest.config.ts
+├── .github/workflows/deploy.yml  ← 构建 + 部署到 Pages
+├── proxy/cloudflare-worker.js    ← 原样保留，不改
+├── public/                       ← manifest.json / icon.svg / .nojekyll
+├── .vitepress/                   ← 发布站工程（VitePress，见 §3.5）
+│   ├── config.ts                 ← 导航/侧边栏/双链插件/base 路径
+│   └── theme/index.ts            ← 自定义主题 + 注册标签云组件
+└── src/
+    ├── main.ts
+    ├── App.vue
+    ├── types/index.ts            ← Todo / Article / Config / 同步状态
+    ├── router/index.ts           ← hash 路由：/todos /kb/:id? /graph /tags
+    ├── stores/
+    │   ├── data.ts               ← todos + articles CRUD、batch、dirty
+    │   ├── sync.ts               ← 同步状态机 + 配置
+    │   └── ui.ts                 ← 筛选条件、编辑模式等视图态
+    ├── services/
+    │   ├── github/
+    │   │   ├── client.ts         ← 请求封装：超时、错误映射、代理基址
+    │   │   ├── notes.ts          ← 单文件 GET/PUT（kb/*.md）
+    │   │   ├── manifest.ts       ← manifest.json 读写 + sha 索引
+    │   │   ├── contents.ts       ← fetchRemote / pushRemote
+    │   │   └── diagnose.ts       ← 五步诊断
+    │   └── sync/
+    │       ├── merge.ts          ← ★ per-file LWW 合并（纯函数，重点测试）
+    │       ├── serialize.ts      ← ★ 墓碑清理（纯函数，重点测试）
+    │       └── engine.ts         ← 编排：重试、排队、轮询、防抖
+    ├── lib/
+    │   ├── markdown/
+    │   │   ├── index.ts          ← marked 实例 + DOMPurify
+    │   │   ├── wikilink.ts       ← ★ [[双链]] marked extension
+    │   │   ├── frontmatter.ts    ← ★ YAML frontmatter 解析/序列化
+    │   │   └── highlight.ts      ← ★ ==高亮== marked extension
+    │   ├── kb.ts                 ← ★ 双链图构建（出链/入链/缺失）+ 标签聚合
+    │   └── slug.ts               ← ★ 标题归一化
+    ├── composables/
+    │   ├── useAutoSave.ts        ← 700ms 防抖 + flushNow
+    │   └── useWikiAutocomplete.ts← [[ 补全（含光标坐标测算）
+    ├── components/
+    │   ├── todos/  TodoCard.vue · TodoComposer.vue · TodoFilters.vue · TodoEditSheet.vue
+    │   ├── kb/     ArticleList.vue · ArticleEditor.vue · ArticlePreview.vue · LinksPanel.vue · WikiAutocomplete.vue · TagCloud.vue
+    │   ├── graph/  GraphCanvas.vue
+    │   └── common/ SyncChip.vue · SettingsSheet.vue · DiagnosePanel.vue · BaseSheet.vue · ToastHost.vue
+    ├── views/      TodosView.vue · KbView.vue · GraphView.vue · TagsView.vue
+    └── styles/     variables.css · base.css</code></pre>
+<p>★ = 纯函数模块，单测重点覆盖对象。</p>
+<p><strong>分层规则</strong>：<code>views → components → composables/stores → services → lib</code>，禁止反向依赖。与现状最大的不同是——<strong>依赖关系由 <code>import</code> 静态声明，编译器会校验</strong>，不再依赖 <code>&lt;script&gt;</code> 行序。</p>
+
+<h3>3.3 核心模块设计</h3>
+
+<h4>3.3.1 数据层（<code>stores/data.ts</code>）</h4>
+<p>对应现状 <code>store.js</code>。用 Pinia 重写，但<strong>算法逐条移植不改语义</strong>：</p>
+<ul>
+  <li>CRUD 保持软删除语义，<code>removeArticle</code> 仍需解除关联待办的 <code>noteId</code></li>
+  <li><code>batch()</code> 对应 Pinia 里的批量标记，批内只触发一次持久化与推送</li>
+  <li><strong>文章存储为 Markdown 文件</strong>：<code>addArticle</code>/<code>updateArticle</code> 写 <code>kb/&lt;slug&gt;.md</code>（frontmatter + 正文，经 <code>lib/markdown/frontmatter.ts</code> 序列化），同时更新 <code>manifest.json</code> 的索引项（含 sha）；<code>load()</code> 先读 manifest 再按需拉文件，正文懒加载以加速首屏</li>
+  <li>本地 <code>wb.data.v1</code> 仍缓存一份快照加速离线首屏，与远端文件以 <code>updatedAt</code> 对齐</li>
+  <li><strong>纯算法（merge / diffFromRemote / serialize）抽到 <code>services/sync/</code> 作为无副作用函数</strong>，便于测试——这是相对现状的结构改进</li>
+</ul>
+
+<h4>3.3.2 同步引擎（<code>services/sync/</code>）—— 核心资产，只移植不重写</h4>
+<p>现状 <code>github.js</code> 的 375 行里，真正有价值的是<strong>业务逻辑</strong>而非 HTTP 封装。移植时逐条对齐 S1–S22，其中这几处是<strong>踩坑换来的，必须原样保留</strong>：</p>
+<table>
+  <thead><tr><th>必须保留的行为</th><th>原因</th></tr></thead>
+  <tbody>
+    <tr><td>并发排队（而非"忙就返回 false"）</td><td>commit <code>81429d7</code> 修的 bug：轮询撞手动同步导致"网络正常却报同步失败"</td></tr>
+    <tr><td>空同步返回真值对象</td><td>同上：<code>merged</code> 为 false 时成功的空同步被误报失败</td></tr>
+    <tr><td>配置空值双重回落</td><td>commit <code>253bc3b</code>/<code>6427394</code>：历史脏数据把默认仓库盖成空</td></tr>
+    <tr><td><code>e.name === 'TypeError'</code> 判定网络错误</td><td>fetch 可能来自其它 realm，<code>instanceof</code> 会漏判</td></tr>
+    <tr><td>12s 超时</td><td>无超时会导致请求永久挂起</td></tr>
+  </tbody>
+</table>
+<p><strong>改进点</strong>：统一 <code>sync()</code> 返回值为 <code>{ ok: boolean; merged: boolean; pushed: boolean }</code>，消除现状"三种返回类型"的踩坑点（architecture.md §12 已列为技术债）。TypeScript 会强制所有调用方正确处理。</p>
+
+<h4>3.3.3 Markdown（<code>lib/markdown/</code>）</h4>
+<p>marked 18 + 两个自定义 extension + DOMPurify。</p>
+<ul>
+  <li><strong><code>[[wiki]]</code> extension</strong>：解析 <code>[[标题]]</code> / <code>[[标题|别名]]</code>，通过 resolver 判断目标是否存在，输出 <code>&lt;a class="wikilink[ missing]" data-wiki="..."&gt;</code></li>
+  <li><strong><code>==高亮==</code> extension</strong>：输出 <code>&lt;mark&gt;</code></li>
+  <li><strong>安全模型变化</strong>：现状是"全量转义"（等于完全不支持 HTML）；新方案是 marked 渲染后交 DOMPurify 白名单过滤。<strong>这比现状更安全也更宽容</strong>——既挡住 XSS，又不会把用户写的合法内容错误转义。</li>
+  <li><strong>行为差异（属改进，需你确认接受）</strong>：现状标题降级封顶 h3（<code>Math.min(h[1].length, 3)</code>），marked 会正常渲染 h4–h6。</li>
+</ul>
+
+<h4>3.3.4 双链图与标签聚合（<code>lib/kb.ts</code>）</h4>
+<p>现状 <code>buildGraph()</code> 在 <code>notes.js</code> 里，被列表、详情、图谱三处调用，<strong>每次调用都全量重算</strong>（扫描所有笔记正文）。</p>
+<p>新方案抽为纯函数 + <strong>Pinia <code>computed</code> 缓存</strong>，文章数据不变时不重算。这是相对现状的性能改进，且让它可被单测。<code>lib/links.ts</code> 重命名为 <code>lib/kb.ts</code>，同时承载：</p>
+<ul>
+  <li>双链图构建（出链/入链/缺失，L1–L11 不变）</li>
+  <li><strong>标签聚合</strong>：扫所有文章 frontmatter 的 <code>tags</code>，输出 <code>tag → 文章数</code> 映射（TAG3/TAG4 的数据源，纯函数、单测重点）</li>
+</ul>
+<p><code>renameRefs</code>（L11 改标题联动改引用）同样抽为纯函数：输入文章数组与新旧标题，输出需要更新的文章列表——<strong>这是最值得测试的逻辑之一</strong>，正则一旦写错会批量破坏用户数据。改名现在同时是<strong>文件系统操作</strong>：重命名 <code>kb/&lt;old-slug&gt;.md</code> → <code>kb/&lt;new-slug&gt;.md</code> 并改写其它文件中的 <code>[[旧标题]]</code>。</p>
+
+<h4>3.3.5 图谱（<code>components/graph/GraphCanvas.vue</code>）</h4>
+<ul>
+  <li>布局交给 <code>d3-force</code>（内置 Barnes-Hut 近似，解决现状 O(n²)）</li>
+  <li>拖拽用 <code>d3-drag</code>，缩放用 <code>d3-zoom</code></li>
+  <li><strong>渲染改为 Vue 模板的 <code>v-for</code> + <code>:transform</code> 绑定</strong>，替代现状的字符串拼 SVG + <code>innerHTML</code> 整树重绘（architecture.md §12 两项技术债一并解决）</li>
+</ul>
+
+<h4>3.3.6 UI 组件</h4>
+<p>按 2.1–2.8 清单逐项实现。通用件交给 Element Plus，业务件保持自定义：</p>
+<ul>
+  <li><strong>抽屉</strong>：<code>el-drawer</code>（待办编辑、设置面板），统一遮罩 / <code>Esc</code> 关闭 / 点击外部关闭</li>
+  <li><strong>Toast</strong>：<code>el-message</code> / <code>el-notification</code>（X4 三档 ok/err/info）</li>
+  <li><strong>确认框</strong>：<code>el-message-box.confirm</code>（T13 / N9 删除确认、L7 缺失链接创建确认）</li>
+  <li><strong>段控件 / Tabs</strong>：<code>el-segmented</code> / <code>el-tabs</code>（T5 状态筛选、X1 三视图）</li>
+  <li><strong>开关</strong>：<code>el-switch</code>（S1 同步启用开关）</li>
+  <li><strong>8 色色板</strong>：业务专属，<strong>自定义</strong>实现（<code>TodoFilters</code> + 编辑抽屉颜色选择），组件库不提供</li>
+  <li><strong><code>[[</code> 补全的光标坐标测算</strong>（A5）：镜像 div 方案原样移植到 <code>useWikiAutocomplete</code>，纯 DOM 计算无库可替</li>
+  <li><strong>编辑防打断</strong>（N6）：现状 <code>suppressRender</code> 标志改为<strong>编辑器内容由本地 ref 持有，仅 flush 时写回 store</strong>，机制上消除打断</li>
+</ul>
+
+<h4>3.3.7 标签云组件（<code>components/kb/TagCloud.vue</code> + <code>TagsView.vue</code>）</h4>
+<p>对应 TAG3/TAG4/TAG5。用 <code>d3-cloud</code>（<code>d3.layout.cloud</code>）做螺旋布局定位，字号按标签文章数缩放，再用 CSS <code>@keyframes</code> 做"动态漂浮"。</p>
+<ul>
+  <li><strong>字号</strong>：<code>fontSize = base + count * step</code>（封顶防溢出），某标签下文章越多字越大</li>
+  <li><strong>颜色</strong>：复用项目 8 色板，或按标签名 hash 取色，保证同一标签恒色</li>
+  <li><strong>漂浮</strong>：每个词 <code>animation: float Ns ease-in-out infinite alternate</code>，轻微 <code>translate</code>/微旋，错相位避免整齐</li>
+  <li><strong>点击</strong>：点标签 → 跳「知识库」视图并按该标签筛选列表（复用 ui store 的筛选态，扩展 <code>tag</code> 维度）</li>
+  <li><strong>性能</strong>：标签数 = 去重后的 tag 集合（通常几十个），<code>d3-cloud</code> 秒级算完；<code>tagCounts</code> 用 <code>computed</code> 缓存</li>
+  <li><strong>发布侧</strong>：同一组件注册到 VitePress 主题（<code>.vitepress/theme/index.ts</code>），生成 <code>/tags/</code> 页（TAG5）</li>
+</ul>
+
+<h3 id="s3-4">3.4 重构后架构图与数据流</h3>
+<blockquote><p>本节用两张图说明模块分层与「本地 ↔ 同步引擎 ↔ workbench-data」的数据流，作为第 2 节需求清单的落地视角。</p></blockquote>
+
+<h4>3.4.1 模块分层与依赖方向</h4>
+<p>分层规则：<strong>views → components → composables/stores → services → lib</strong>，依赖只能单向，避免现状 <code>window.WB</code> 靠 <code>&lt;script&gt;</code> 行序隐式耦合的问题。<code>lib/</code> 为无副作用纯函数，被组件层与服务层引用。</p>
+<div class="mermaid">
+graph TD
+  subgraph V["视图层 views/"]
+    TV["TodosView"]
+    KV["KbView"]
+    GV["GraphView"]
+    TG["TagsView"]
+  end
+  subgraph C["组件层 components/"]
+    TC["todos/ · kb/ · graph/ · common/"]
+  end
+  subgraph K["组合式 composables/"]
+    UA["useAutoSave<br/>(700ms 防抖+flushNow)"]
+    UW["useWikiAutocomplete<br/>(光标坐标+补全)"]
+  end
+  subgraph S["状态层 stores/ (Pinia)"]
+    DS["data.ts<br/>todos/articles CRUD·batch·dirty·持久化"]
+    SY["sync.ts<br/>同步状态机·配置"]
+    UI["ui.ts<br/>筛选条件·编辑态"]
+  end
+  subgraph SV["服务层 services/"]
+    GH["github/<br/>notes·manifest·contents·diagnose"]
+    EN["sync/<br/>merge·serialize·engine"]
+  end
+  subgraph L["纯函数库 lib/"]
+    MD["markdown/<br/>wiki·frontmatter·highlight + DOMPurify"]
+    LK["kb·slug"]
+  end
+
+  V --> C
+  V --> S
+  C --> K
+  C --> S
+  K --> S
+  S --> SV
+  SV --> L
+  L -.被引用.-> C
+  L -.被引用.-> SV
+</div>
+
+<h4>3.4.2 与 workbench-data 的数据流</h4>
+<p>本地优先（local-first）：所有读写先落 <code>localStorage</code>，同步引擎是唯一通往远端的通道；远程 <code>workbench-data</code> 仓库以 <strong>Markdown 文档库</strong>形态存储——每篇知识库文章一个 <code>kb/&lt;slug&gt;.md</code>，配合轻量 <code>manifest.json</code> 索引与结构化 <code>todos.json</code>，经 Cloudflare Worker 代理访问（令牌只经用户自己的 Worker，不落库/不落日志）。同一份 <code>kb/*.md</code> 同时被 VitePress 构建成公开发布站点（§3.5）。</p>
+<div class="mermaid">
+flowchart LR
+  U(["用户操作"]) -->|"点击 / 输入"| VC["Views / Components"]
+
+  VC -->|"读 / 写"| DS[(data store)]
+  DS -->|"持久化"| LS[("localStorage\nwb.data.v1 · wb.cfg.v1")]
+  DS -->|"变更置 dirty + 1.5s 防抖"| EN
+
+  EN -->|"fetchRemote / pushRemote"| GH
+  GH -->|"HTTPS 经代理"| API["GitHub Contents API\n(Cloudflare Worker 白名单透传)"]
+  API -->|"GET / PUT kb/*.md + manifest.json"| WD[("workbench-data\nMarkdown 文档库")]
+  API -->|"GET / PUT todos.json"| TJ[("todos.json\n结构化待办")]
+  API -->|"连通性 / push 权限校验"| GH
+
+  GH -->|"拉取结果"| EN
+  EN -->|"per-file LWW + serialize"| DS
+  EN -->|"ok / syncing / error / off"| SY[(sync store)]
+  SY -->|"顶栏胶囊指示"| VC
+
+  WD -->|"同一份 md 源"| VP["VitePress 构建"]
+  VP -->|"静态 HTML"| PGS[("GitHub Pages\n公开发布站点")]
+</div>
+
+<p><strong>关键路径说明：</strong></p>
+<ol>
+  <li><strong>本地写</strong>：用户操作 → <code>data store</code> → <code>localStorage</code> 立即落盘，同时置 <code>dirty</code> 并触发 1.5s 防抖推送（S3）。</li>
+  <li><strong>推送</strong>：防抖到点 → <code>engine</code> 调 <code>pushRemote</code> → 按文件带 <code>sha</code> 乐观锁 PUT <code>kb/&lt;slug&gt;.md</code> 与 <code>manifest.json</code>（S10 冲突重试最多 3 次）。</li>
+  <li><strong>拉取</strong>：定时轮询 / 前台恢复 / 手动同步 → <code>fetchRemote</code> → 以文件为单位的 LWW 合并（比对 <code>manifest</code> 中 <code>updatedAt</code>/<code>sha</code>），软删除墓碑照常传播（S7/S8）。</li>
+  <li><strong>合并回写</strong>：合并结果经 <code>serialize</code> 清理 30 天墓碑后写回 <code>data store</code> 与 <code>localStorage</code>，并刷新顶栏同步状态（S9/S15）。</li>
+  <li><strong>发布</strong>：<code>workbench-data/kb/*.md</code> 是 VitePress 的内容源，<code>git push</code> → Actions 构建静态站点到 Pages，<code>[[双链]]</code> 与 backlinks（TAG5）在公开站点同样成立。</li>
+  <li><strong>代理隔离</strong>：<code>services/github/</code> 永远不直接持令牌；令牌存 <code>wb.cfg.v1</code>（本地），经 Worker 转发，对应红线「令牌不落库不落日志」。</li>
+</ol>
+
+<h3>3.5 发布管线（VitePress）</h3>
+<p>将 <code>workbench-data/kb/*.md</code> 同时作为<strong>公开知识库站点</strong>的内容源，实现"一次书写、app 可读、站点可发"。</p>
+<ul>
+  <li><strong>内容源</strong>：<code>workbench-data/kb/*.md</code>（frontmatter + 正文），与 app 加载的是同一份真源</li>
+  <li><strong>构建</strong>：<code>git push</code> → Actions 跑 <code>vitepress build</code> → 产物 <code>.vitepress/dist/*.html</code> 部署到 GitHub Pages（html 为生成物，不入库）</li>
+  <li><strong>双链与 backlinks</strong>：用 VitePress 的 <code>[[wikilink]]</code> 解析插件 + backlinks 插件，公开站点同样支持 <code>[[标题]]</code> 互链</li>
+  <li><strong>标签页（TAG5）</strong>：<code>createContentLoader</code> 扫 frontmatter 的 <code>tags</code> 聚合出 <code>tag → 文章</code> 映射，生成 <code>/tags/</code> 页，并注册 <code>TagCloud.vue</code> 复用 app 的标签云视觉</li>
+  <li><strong>发布控制</strong>：<code>publish: false</code> 或 <code>deleted: true</code> 的文章自动排除；<code>todos.json</code> 不进发布树</li>
+  <li><strong>与重构同生态</strong>：VitePress 同为 Vite + Vue，复用 marked / DOMPurify 经验；多一次构建（约 +1 分钟 CI），换来"知识库可公开 + 首屏即内容 + 可搜索"</li>
+  <li><strong>部署范式统一</strong>：与 workbench 应用共用 <code>npm ci → type-check → test → build → deploy Pages</code> 的 Actions 范式（§4.4）</li>
+</ul>
+
+<h2 id="s4">4. 关键决策与权衡</h2>
+
+<h3>4.1 数据 schema：Markdown 文档库，清空重来（<span class="hl">已裁定：2026-07-31</span>）</h3>
+<p>评审结论：<strong>存储形态从单文件 <code>data/workbench.json</code> 改为 <code>workbench-data</code> 仓库中的 Markdown 文档库</strong>——每篇知识库文章一个 <code>kb/&lt;slug&gt;.md</code>（frontmatter + 正文），配合轻量 <code>manifest.json</code> 索引与结构化 <code>todos.json</code>；"清空重来"，不保留任何旧 JSON 格式的兼容/迁移代码，生产数据仓库以全新状态起步。</p>
+<ul>
+  <li>双链寻址经确认<strong>保持「标题寻址」</strong>（与现有功能 1:1 一致，L11 改名联动逻辑保留），不改为 id 寻址，以降低重写风险</li>
+  <li>既然无需兼容，所有 <code>normalize</code> / <code>normTodo</code> / <code>normNote</code> 等历史脏数据回落与迁移分支<strong>一律不移植</strong>，数据层只实现"当前格式（Markdown + frontmatter）"的读写</li>
+  <li>同步单位从"整库 LWW"降级为"<strong>按文件 LWW</strong>"（<code>manifest</code> 驱动，比对 <code>updatedAt</code>/<code>sha</code>），单篇冲突不再阻塞全库（相对现状是改进，见 §3.3.2）</li>
+  <li>生产数据仓库的旧 <code>data/workbench.json</code> 视为可覆盖：首次同步会用 Markdown 文档库结构覆盖写入，旧数据由用户自行决定是否先导出备份（S19 导出功能保留）</li>
+  <li>本地 localStorage 键名可沿用 <code>wb.data.v1</code> / <code>wb.cfg.v1</code>（仅本地快照，不涉及跨版本兼容）</li>
+</ul>
+
+<h3>4.2 路由：hash 模式</h3>
+<p>GitHub Pages 是纯静态托管，history 模式刷新子路径会 404（需要 404.html 兜底 hack）。<strong>hash 模式（<code>/#/kb/xxx</code>）天然规避</strong>，且带来现状没有的能力：知识库文章可以直接用 URL 分享/收藏。</p>
+<p>现状的"localStorage 记忆上次视图"（X1）由路由自然承担。</p>
+
+<h3>4.3 缓存策略：Vite content hash 取代 <code>bump-version.sh</code></h3>
+<p>现状靠手工执行 <code>bump-version.sh</code> 刷 <code>?v=</code> 时间戳，且<strong>该脚本在 Linux/WSL 上因 BSD sed 语法直接报错</strong>（architecture.md 列为 🔴 高危技术债，漏刷会导致线上跑旧代码）。</p>
+<p>Vite 构建产物自带内容 hash（<code>app.a1b2c3d4.js</code>），<strong>这个问题从机制上消失</strong>，同时 AGENTS.md 红线 3 可以移除。</p>
+
+<h3>4.4 部署：GitHub Actions</h3>
+<pre><code>push main → Actions: npm ci → type-check → test → build → deploy Pages</code></pre>
+<p>代价是 push 后需等约 1 分钟。收益是<strong>每次发布都自动跑类型检查和测试</strong>——这才是质量门禁该待的地方（现状全靠本地 git hook，可被 <code>--no-verify</code> 绕过）。</p>
+<p><code>vite.config.ts</code> 设 <code>base: './'</code> 保持相对路径特性，无需为 Pages 子路径做额外配置。</p>
+
+<h3>4.5 AGENTS.md 红线需同步修改（<strong>需你批准</strong>）</h3>
+<table>
+  <thead><tr><th>红线</th><th>现状</th><th>重构后</th></tr></thead>
+  <tbody>
+    <tr><td>红线 2 禁引构建工具/框架/npm</td><td>与本次重构直接冲突</td><td><strong>需删除或改写</strong></td></tr>
+    <tr><td>红线 3 改 js/css 必跑 <code>bump-version.sh</code></td><td>脚本将被删除</td><td><strong>需删除</strong></td></tr>
+    <tr><td>红线：<code>&lt;script&gt;</code> 顺序不可调</td><td>不再有手写 script 标签</td><td><strong>需删除</strong></td></tr>
+    <tr><td>红线：禁绕过 store.js / github.js</td><td>语义仍然成立</td><td>改为指向新模块路径</td></tr>
+    <tr><td>红线：令牌不落库不落日志</td><td>仍然成立</td><td>保留</td></tr>
+  </tbody>
+</table>
+
+<h2 id="s5">5. 实施顺序</h2>
+<p>你选择了「一次性重写」，因此下列是<strong>开发顺序</strong>而非分阶段发布计划。旧代码在新版验收通过前保持可运行（见第 8 节）。</p>
+<table>
+  <thead><tr><th>步骤</th><th>内容</th><th>产出验证</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>脚手架 + TS 配置 + 目录骨架 + CI</td><td><code>npm run build</code> 通过</td></tr>
+    <tr><td>2</td><td>类型定义 + 数据层（Markdown 文件读写 + manifest）+ 纯算法（merge/serialize/slug/kb/renameRefs/tags 聚合）</td><td><strong>单测全绿</strong>（此步最关键）</td></tr>
+    <tr><td>3</td><td>同步引擎移植（client/contents/diagnose/engine）</td><td>单测（mock fetch）+ 对真实测试仓库联调</td></tr>
+    <tr><td>4</td><td>Markdown（marked extension + DOMPurify）</td><td>单测覆盖各语法 + 双链解析</td></tr>
+    <tr><td>5</td><td>基础组件与样式迁移（BaseSheet / Toast / 布局 / CSS 变量）</td><td>视觉比对</td></tr>
+    <tr><td>6</td><td>待办视图（T1–T15）</td><td>逐项对照验收</td></tr>
+    <tr><td>7</td><td>知识库视图 + 双链 + 自动补全 + 标签云（N1–N10, L1–L11, A1–A7, TAG1–TAG5）</td><td>逐项对照验收</td></tr>
+    <tr><td>8</td><td>图谱视图（G1–G8）</td><td>逐项对照验收</td></tr>
+    <tr><td>9</td><td>设置面板 + 诊断 + 导出（S17–S21）</td><td>逐项对照验收</td></tr>
+    <tr><td>10</td><td>全量回归 + 移动端验证 + 部署上线</td><td>第 2 节清单全绿</td></tr>
+  </tbody>
+</table>
+<p><strong>步骤 2、3 是重中之重</strong>——数据合并算法出错会静默丢数据，且是唯一无法靠肉眼验收的部分。</p>
+
+<h2 id="s6">6. 测试策略</h2>
+<p>现状零测试。新方案分三层，<strong>不追求覆盖率数字，只覆盖"错了会丢数据/难以人工发现"的部分</strong>：</p>
+<table>
+  <thead><tr><th>层</th><th>工具</th><th>覆盖对象</th></tr></thead>
+  <tbody>
+    <tr><td>单元测试</td><td>Vitest</td><td><strong>LWW 合并</strong>（远端新增/本地更新/时间戳相等/墓碑传播）、<strong>serialize 墓碑清理</strong>（30 天边界）、<strong>diffFromRemote</strong>、<strong>renameRefs</strong>（别名保留、正则边界）、slug 归一化、标题去重、Markdown 各语法 + wiki 解析、错误码映射</td></tr>
+    <tr><td>组件测试</td><td>Vitest + @vue/test-utils</td><td>筛选与搜索组合、卡片状态切换、自动补全键盘交互</td></tr>
+    <tr><td>类型检查</td><td><code>vue-tsc --noEmit</code></td><td>全量，CI 强制</td></tr>
+  </tbody>
+</table>
+<p>同步引擎的网络层用 mock fetch 测重试与排队逻辑；真实链路验证走手动（对照 <code>.harness/docs/integration_test/integration_test.md</code> 的 29 条清单）。</p>
+<div class="callout warn">⚠️ <strong>测试环境隔离</strong>：现有代码在 repo/path 留空时会回落到生产数据仓 <code>GuoxinL/workbench-data</code>（<code>store.js:75-77</code>）。跑联调测试<strong>必须显式指定测试仓库</strong>，否则会写到你的真实数据。新版应在开发模式下对此加一道显式提示。</div>
+
+<h2 id="s7">7. 收益与代价</h2>
+<p><strong>收益</strong></p>
+<ul>
+  <li>类型检查 + 单测 + CI 三层反馈闭环，AI 改动可自动验证</li>
+  <li>消除 architecture.md 列出的 6 项技术债（无测试、BSD sed、sync 返回值、全量重渲染、图谱 O(n²)、SVG 重绘）</li>
+  <li>单文件从 483 行降到组件级（预计每个 &lt; 150 行）</li>
+  <li>依赖关系编译期可查，不再靠 script 行序</li>
+</ul>
+<p><strong>代价</strong>（如实列出）</p>
+<table>
+  <thead><tr><th>代价</th><th>说明</th><th>缓解</th></tr></thead>
+  <tbody>
+    <tr><td>失去"零构建"卖点</td><td>源码不再等于产物</td><td>部署仍全自动，用户侧无感知</td></tr>
+    <tr><td>新增 Node 开发依赖</td><td>需要 npm install</td><td>你机器已有 Node v24.13.0；npmmirror 已验证可用</td></tr>
+    <tr><td>发布延迟约 1 分钟</td><td>Actions 构建时间</td><td>换来自动质量门禁</td></tr>
+    <tr><td>引入 6+ 个运行时依赖</td><td>Vue/Pinia/Router/marked/DOMPurify/d3-force/<strong>d3-cloud</strong>/VueUse + <strong>Element Plus</strong></td><td>均为主流长期维护库；Element Plus 按需自动导入，产物预计 250–350KB gzip（含组件库，较纯手写 +150KB 左右）</td></tr>
+    <tr><td>新增发布构建</td><td>VitePress 站点（另一次 CI 构建，约 +1 分钟）</td><td>换来"知识库可公开 + 首屏即内容 + 可搜索 + 双链 backlinks"；md 源与 app 共用一份，零额外维护</td></tr>
+    <tr><td>一次性重写有回归风险</td><td>3185 行行为需逐条对齐</td><td>第 2 节清单即验收基线；旧代码保留至验收通过</td></tr>
+  </tbody>
+</table>
+
+<h2 id="s8">8. 风险与应对</h2>
+<table>
+  <thead><tr><th>风险</th><th>等级</th><th>应对</th></tr></thead>
+  <tbody>
+    <tr><td><strong>重写遗漏现有行为</strong></td><td>🔴 高</td><td>第 2 节 70+ 项清单逐条验收；细节行为（如颜色筛选二次点击取消、光标坐标翻转）已在清单中固化</td></tr>
+    <tr><td><strong>同步算法移植出错致丢数据</strong></td><td>🔴 高</td><td>纯函数化 + 单测先行（步骤 2）；联调用独立测试仓库，<strong>绝不指向生产数据仓</strong></td></tr>
+    <tr><td>TS 7 生态适配未就绪</td><td>🟡 中</td><td>锁 5.9 LTS，初始化时实测 7.0 再决定</td></tr>
+    <tr><td>Vite 8 / Pinia 4 / Router 5 均为较新主版本</td><td>🟡 中</td><td>用官方脚手架 <code>npm create vue@latest</code> 生成，避免手工拼版本</td></tr>
+    <tr><td>marked 行为与手写渲染器有差异</td><td>🟡 中</td><td>单测覆盖 2.5 节全部语法；差异项（h4-h6）已提前标注</td></tr>
+    <tr><td>npm 安装受网络影响</td><td>🟢 低</td><td>npmmirror 已验证可达</td></tr>
+  </tbody>
+</table>
+<p><strong>旧代码处理</strong>：你选择了「直接替换」。鉴于上次 <code>_wbtest.py</code> 误删且无法恢复的教训，我的执行方式是——<strong>旧代码在整个重写期间原地保留并保持可运行</strong>，直到第 10 步全量验收通过；删除时<strong>先向你确认</strong>，且确保删除内容已在 git 历史中（当前 <code>.harness/</code>、<code>AGENTS.md</code> 等尚未提交，建议先提交一次再动手）。</p>
+
+<h2 id="s9">9. 需要你拍板的事项（<strong>已于 2026-07-31 评审确认</strong>）</h2>
+<table>
+  <thead><tr><th>#</th><th>事项</th><th>结论</th></tr></thead>
+  <tbody>
+    <tr><td><strong>1</strong></td><td>数据 schema</td><td><strong>清空重来</strong>：结构不变（标题寻址），不移植兼容/迁移代码，生产数据仓库全新起步（见 4.1）</td></tr>
+    <tr><td><strong>2</strong></td><td>修改 AGENTS.md 红线</td><td><strong>批准</strong>：红线 2/3 与「script 顺序」删除或改写，令牌安全红线保留（见 4.5，实施时同步改）</td></tr>
+    <tr><td><strong>3</strong></td><td>UI 组件库</td><td><strong>引入 Element Plus</strong>（按需自动导入），8 色色板等业件仍自定义</td></tr>
+    <tr><td><strong>4</strong></td><td>Markdown h4–h6</td><td><strong>接受</strong>：marked 正常渲染 h1–h6，属修复</td></tr>
+  </tbody>
+</table>
+<blockquote>
+  <p>另外确认一下：现在这套 <code>.harness/</code> 文档和 <code>AGENTS.md</code> 还没提交到 git（<code>git status</code> 显示全是未跟踪）。<strong>已建议先提交一次再开始重构</strong>，这样旧代码和文档都有明确的回溯点（见下一节执行）。</p>
+</blockquote>
+
+<div class="callout ok">✅ 评审已通过，4 项决策已确认。下一步：先提交 <code>.harness/</code> + <code>AGENTS.md</code> 基线，再按第 5 节顺序开始实施，从步骤 1 脚手架开始。</div>
+
+<p class="footnote">本文件（<code>design.html</code>）为重构设计唯一真源文档。Mermaid 图需联网加载 CDN（<code>cdn.jsdelivr.net</code>）才能渲染；离线状态下表格与文字内容不受影响。</p>
+
+</div>
+</body>
+</html>
