@@ -4,6 +4,7 @@ import type { Article } from '@/types'
 import { useDataStore } from '@/stores/data'
 import { renderMarkdown } from '@/lib/markdown'
 import { slug } from '@/lib/slug'
+import { resolveTitle } from '@/lib/links'
 import { useAutoSave } from '@/composables/useAutoSave'
 import LinksPanel from './LinksPanel.vue'
 import WikiAutocomplete from './WikiAutocomplete.vue'
@@ -75,6 +76,9 @@ defineExpose({ enterEdit, flush })
 function onPreviewClick(e: MouseEvent) {
   const a = (e.target as HTMLElement).closest('.wikilink') as HTMLElement | null
   if (!a) return
+  // 优先用 data-id（渲染时已通过标题→id 解析）；缺失时走 slug 回退
+  const id = a.getAttribute('data-id')
+  if (id) { emit('open', id); return }
   const s = a.getAttribute('data-slug')!
   const target = store.articles.find((n) => !n.deleted && slug(n.title) === s)
   if (target) emit('open', target.id)
@@ -119,7 +123,7 @@ async function remove() {
 }
 
 const html = computed(() =>
-  props.article ? renderMarkdown(draftContent.value, { exists: (s) => store.articles.some((n) => !n.deleted && slug(n.title) === s) }) : '',
+  props.article ? renderMarkdown(draftContent.value, { resolve: (title) => resolveTitle(store.articles, title) }) : '',
 )
 const wordCount = computed(() => draftContent.value.replace(/\s/g, '').length)
 const fromTodoTitle = computed(() => {

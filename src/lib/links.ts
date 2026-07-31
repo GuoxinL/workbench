@@ -26,14 +26,24 @@ export function extractRefs(content: string): WikiRef[] {
 }
 
 export interface LinkGraph {
-  /** 文章 id -> 出链目标 slug 集合 */
+  /** 源文章 id -> 目标文章 id 集合 */
   out: Map<string, Set<string>>
-  /** 目标 slug -> 引用它的源文章 id 集合 */
+  /** 目标文章 id -> 引用它的源文章 id 集合 */
   in: Map<string, Set<string>>
   /** 被引用但无对应文章的 slug 集合（缺失链接，对应 L5/L8） */
   missing: Set<string>
   /** slug -> 文章 id（现有文章的标题索引） */
-  titleToId: Map<string, string>
+  slugToId: Map<string, string>
+}
+
+/**
+ * 根据文章标题（双链中的 [[标题]] 文本）解析到文章 id。
+ * 未找到返回 null；多篇文章 slug 相同取首个匹配（与 slugToId 一致）。
+ */
+export function resolveTitle(articles: Article[], title: string): string | null {
+  const s = slug(title)
+  const a = articles.find((n) => !n.deleted && slug(n.title) === s)
+  return a ? a.id : null
 }
 
 /**
@@ -41,11 +51,11 @@ export interface LinkGraph {
  * 忽略自引用（L9），同篇重复引用已在 extractRefs 去重（L10）。
  */
 export function buildGraph(articles: Article[]): LinkGraph {
-  const titleToId = new Map<string, string>()
+  const slugToId = new Map<string, string>()
   for (const n of articles) {
     if (n.deleted) continue
     const s = slug(n.title)
-    if (!titleToId.has(s)) titleToId.set(s, n.id)
+    if (!slugToId.has(s)) slugToId.set(s, n.id)
   }
 
   const out = new Map<string, Set<string>>()
@@ -60,18 +70,19 @@ export function buildGraph(articles: Article[]): LinkGraph {
     for (const r of refs) {
       const s = slug(r.title)
       if (s === self) continue // 忽略自引用
-      set.add(s)
-      if (!titleToId.has(s)) {
-        missing.add(s)
+      const tgtId = slugToId.get(s)
+      if (tgtId) {
+        set.add(tgtId)
+        if (!inn.has(tgtId)) inn.set(tgtId, new Set())
+        inn.get(tgtId)!.add(n.id)
       } else {
-        if (!inn.has(s)) inn.set(s, new Set())
-        inn.get(s)!.add(n.id)
+        missing.add(s)
       }
     }
     out.set(n.id, set)
   }
 
-  return { out, in: inn, missing, titleToId }
+  return { out, in: inn, missing, slugToId }
 }
 
 /**
