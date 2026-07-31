@@ -62,4 +62,23 @@ describe('contents', () => {
     expect(puts.some((u) => u.includes('manifest.json'))).toBe(true)
     expect(r.manifest.articles.a.sha).toBe('new')
   })
+
+  it('pushRemote 更新已存在文件时携带远端 blob sha（修复 GitHub 422）', async () => {
+    const bodies: any[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: any) => {
+        if (init && init.method === 'PUT') bodies.push(JSON.parse(init.body))
+        return new Response(JSON.stringify({ content: b64('x'), sha: 'new' }), { status: 200, headers: { etag: 'new' } })
+      }),
+    )
+    const articles: Article[] = [
+      { id: '1', title: 'A', content: '正文', fromTodo: '', tags: [], createdAt: 1, updatedAt: 100, deleted: false },
+    ]
+    const r = await pushRemote({ articles, manifestSha: undefined, remoteShas: { a: 'REMOTE_SHA_A' } }, config)
+    expect(r.conflictSlug).toBeNull()
+    const filePut = bodies.find((b) => b.message === 'update A')
+    expect(filePut).toBeTruthy()
+    expect(filePut.sha).toBe('REMOTE_SHA_A')
+  })
 })

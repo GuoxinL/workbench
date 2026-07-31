@@ -105,6 +105,7 @@ describe('createSyncEngine', () => {
         manifest: emptyManifest(),
         manifestSha: remoteSha,
         articles: [],
+        shas: {},
       })),
       pushRemote: vi.fn(async () => ({ manifest: emptyManifest(), conflictSlug: null, manifestSha: remoteSha })),
     }
