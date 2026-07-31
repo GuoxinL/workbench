@@ -1,0 +1,55 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app-shell {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.brand {
+  font-weight: 700;
+}
+
+.tabs a {
+  margin-left: 14px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.tabs a.on {
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.foot {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.view h2 {
+  margin: 0 0 8px;
+}
+
+.muted {
+  color: var(--muted);
+}
