@@ -26,8 +26,11 @@ function repoApi(config: Config): string {
 async function repoFetch(config: Config, sub: string, init: RequestInit = {}): Promise<Response> {
   const controller = new AbortController()
   const t = setTimeout(() => controller.abort(), 12000)
+  // sub 为空（如 testConnection 校验仓库根）时不拼尾斜杠，
+  // 否则 /repos/o/r/ 不匹配代理白名单正则（要求结尾无斜杠）→ 代理 403 → 浏览器误报「网络错误」
+  const url = sub ? `${repoApi(config)}/${sub}` : repoApi(config)
   try {
-    return await fetch(`${repoApi(config)}/${sub}`, {
+    return await fetch(url, {
       ...init,
       headers: {
         Authorization: `Bearer ${config.token}`,
@@ -51,7 +54,16 @@ export async function testConnection(config: Config): Promise<ConnResult> {
     res = await repoFetch(config, '')
   } catch (e) {
     const err = e as Error
-    return { ok: false, code: 'network', message: err.name === 'AbortError' ? '请求超时' : '网络错误' }
+    if (err.name === 'AbortError') {
+      return { ok: false, code: 'network', message: '请求超时（12s 无响应）' }
+    }
+    // 非超时的 fetch 失败（TypeError/CORS 拦截/断网）在浏览器侧都表现为「网络错误」，
+    // 按是否配置代理给出可操作提示，帮助用户定位而非只看到一句「网络错误」。
+    const usingProxy = !!(config.apiBase && config.apiBase.trim())
+    const tip = usingProxy
+      ? '网络错误：代理地址不可达或被 CORS 拦截。请检查「API 代理基址」是否正确、代理来源白名单是否包含当前站点'
+      : '网络错误：浏览器无法直连 api.github.com。请在「API 代理基址」填入可用的中转地址（如自建 Cloudflare Worker）'
+    return { ok: false, code: 'network', message: tip }
   }
   const data = res.status !== 204 ? await res.json().catch(() => null) : null
   if (!res.ok) {

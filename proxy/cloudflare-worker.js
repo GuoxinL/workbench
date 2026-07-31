@@ -24,16 +24,35 @@ const ALLOW = [
   /^\/$/
 ];
 
-/* 建议改成你自己的站点，限制谁能调用这个 Worker。
-   留空数组表示允许任何来源（方便但不够严格）。 */
+/* 显式放行的站点来源（协议+域名+端口需完全匹配）。
+   留空数组 [] 表示允许任何来源（方便但不够严格，仅建议个人自用）。 */
 const ALLOW_ORIGINS = [
   'https://guoxinl.github.io'
+  // 在此追加你自己的 GitHub Pages / 自定义域名，例如：
+  // 'https://your-name.github.io',
+  // 'https://wb.example.com',
 ];
 
+/**
+ * 来源是否允许调用本 Worker。
+ * 除显式列表外，默认放行两类常见场景，避免「本地开发/预览」与「任意 GitHub Pages」
+ * 被 CORS 拒绝后浏览器吞掉真实错误、只报「网络错误」：
+ *  - http(s)://localhost 或 127.0.0.1（任意端口）：本地 `npm run dev` / `python3 -m http.server` 等
+ *  - https://*.github.io：GitHub Pages 任意用户站点
+ */
+function originAllowed(origin) {
+  if (!origin) return true;
+  if (ALLOW_ORIGINS.includes(origin)) return true;
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  if (/^https:\/\/[\w-]+\.github\.io$/.test(origin)) return true;
+  return false;
+}
+
 function corsHeaders(origin) {
-  const allowed = ALLOW_ORIGINS.length === 0 || ALLOW_ORIGINS.includes(origin);
+  const allowed = originAllowed(origin);
+  // 允许时回显请求来源（正确 CORS 写法）；拒绝时回退到首个显式来源，避免泄露其他来源
   return {
-    'Access-Control-Allow-Origin': allowed ? (origin || '*') : ALLOW_ORIGINS[0],
+    'Access-Control-Allow-Origin': allowed ? (origin || '*') : (ALLOW_ORIGINS[0] || '*'),
     'Access-Control-Allow-Methods': 'GET,PUT,POST,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Authorization,Content-Type,Accept,X-GitHub-Api-Version',
     'Access-Control-Expose-Headers': 'x-oauth-scopes,x-ratelimit-remaining,etag',
@@ -52,10 +71,12 @@ export default {
       return new Response(null, { status: 204, headers: cors });
     }
 
-    if (ALLOW_ORIGINS.length && origin && !ALLOW_ORIGINS.includes(origin)) {
+    if (origin && !originAllowed(origin)) {
+      // 回显来源，使浏览器能读取真实拒绝原因而非被 CORS 吞成「网络错误」
+      const denyCors = { ...cors, 'Access-Control-Allow-Origin': origin };
       return new Response(JSON.stringify({ message: '来源未被允许：' + origin }), {
         status: 403,
-        headers: { ...cors, 'Content-Type': 'application/json' }
+        headers: { ...denyCors, 'Content-Type': 'application/json' }
       });
     }
 

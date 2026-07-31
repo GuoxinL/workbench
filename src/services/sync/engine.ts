@@ -85,7 +85,9 @@ export function createSyncEngine(adapter: SyncAdapter, contents: ContentsApi): S
         // 合并结果写回本地（mergeInto 的 LWW 语义）
         adapter.applyRemote(merged.items, remote?.manifest ?? emptyManifest())
         const pushResult = await contents.pushRemote(
-          { articles: merged.items, manifestSha: adapter.getLocalManifestSha() },
+          // 必须用刚拉取到的远端 manifest sha 作为乐观锁基准，而非本地陈旧 sha；
+          // 否则远端已被改动时会被 GitHub 409 拒绝，且冲突重试循环每次重拉后仍用旧 sha → 死循环 → 同步失败
+          { articles: merged.items, manifestSha: remote ? remote.manifestSha : undefined },
           config,
         )
         if (pushResult.conflictSlug) {

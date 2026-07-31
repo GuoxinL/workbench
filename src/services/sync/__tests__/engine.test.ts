@@ -93,4 +93,38 @@ describe('createSyncEngine', () => {
     expect(r.ok).toBe(false)
     expect((adapter as any).phases).toContain('error')
   })
+
+  it('推送以刚拉取的远端 manifest sha 为乐观锁基准，而非本地陈旧 sha（S10 修复）', async () => {
+    const adapter = makeAdapter({
+      getLocalArticles: () => [localArticle],
+      getLocalManifestSha: () => 'STALE_LOCAL_SHA',
+    })
+    const remoteSha = 'REMOTE_SHA_abc'
+    const contents: ContentsApi = {
+      fetchRemote: vi.fn(async () => ({
+        manifest: emptyManifest(),
+        manifestSha: remoteSha,
+        articles: [],
+      })),
+      pushRemote: vi.fn(async () => ({ manifest: emptyManifest(), conflictSlug: null, manifestSha: remoteSha })),
+    }
+    const e = createSyncEngine(adapter, contents)
+    await e.sync()
+    expect((contents.pushRemote as any).mock.calls[0][0].manifestSha).toBe(remoteSha)
+    expect((contents.pushRemote as any).mock.calls[0][0].manifestSha).not.toBe('STALE_LOCAL_SHA')
+  })
+
+  it('远端无 manifest（首次同步）时以 undefined 推送，不依赖本地 sha', async () => {
+    const adapter = makeAdapter({
+      getLocalArticles: () => [localArticle],
+      getLocalManifestSha: () => 'SOME_LOCAL_SHA',
+    })
+    const contents: ContentsApi = {
+      fetchRemote: vi.fn(async () => null),
+      pushRemote: vi.fn(async () => ({ manifest: emptyManifest(), conflictSlug: null, manifestSha: 'new' })),
+    }
+    const e = createSyncEngine(adapter, contents)
+    await e.sync()
+    expect((contents.pushRemote as any).mock.calls[0][0].manifestSha).toBeUndefined()
+  })
 })

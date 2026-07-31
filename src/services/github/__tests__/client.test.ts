@@ -15,19 +15,31 @@ const config: Config = {
 describe('githubRequest', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('成功：返回 data 与 etag sha，且带鉴权头', async () => {
+  it('成功：优先取响应体 data.sha 作为乐观锁 sha（etag 带引号不可用），且带鉴权头', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string, init: any) => {
         expect(url).toContain('/repos/u/r/contents/x?ref=main')
         expect(init.headers.Authorization).toBe('Bearer t')
-        return new Response(JSON.stringify({ ok: 1 }), { status: 200, headers: { etag: 'abc' } })
+        return new Response(JSON.stringify({ ok: 1, sha: 'deadbeef' }), {
+          status: 200,
+          headers: { etag: '"wrapped-etag"' },
+        })
       }),
     )
     const r = await githubRequest('x', {}, config)
     expect(r.status).toBe(200)
-    expect(r.data).toEqual({ ok: 1 })
-    expect(r.sha).toBe('abc')
+    expect(r.data).toEqual({ ok: 1, sha: 'deadbeef' })
+    expect(r.sha).toBe('deadbeef')
+  })
+
+  it('成功且无 data.sha 时回退到 x-github-sha 头', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ ok: 1 }), { status: 200, headers: { 'x-github-sha': 'fallback' } })),
+    )
+    const r = await githubRequest('x', {}, config)
+    expect(r.sha).toBe('fallback')
   })
 
   it('401 → token 错误（S13）', async () => {

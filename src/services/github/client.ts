@@ -65,7 +65,6 @@ export async function githubRequest(
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       signal: controller.signal,
     })
-    const sha = res.headers.get('etag') ?? res.headers.get('x-github-sha') ?? undefined
     let data: any = null
     if (res.status !== 204) {
       try {
@@ -74,6 +73,9 @@ export async function githubRequest(
         /* 无响应体 */
       }
     }
+    // 乐观锁 sha 必须取响应体里的裸 blob sha（data.sha）；etag 头带引号包裹（如 "abc…"）
+    // 直接当作 sha 发给 PUT 会与 GitHub 侧不匹配 → 409 冲突，故不使用 etag。
+    const sha = data?.sha ?? res.headers.get('x-github-sha') ?? undefined
     if (!res.ok) {
       const code = mapStatus(res.status)
       const msg = data?.message ?? `GitHub API ${res.status}`

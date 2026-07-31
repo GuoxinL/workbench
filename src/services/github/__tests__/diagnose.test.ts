@@ -66,4 +66,54 @@ describe('diagnose（S17/S18）', () => {
     expect(fetchMock.mock.calls[0][0]).toContain('https://api.github.com/repos/o/r')
     expect(r.ok).toBe(true)
   })
+
+  it('测试连接：诊断请求 URL 不带尾斜杠（匹配代理白名单，避免 403→网络错误）', async () => {
+    const fetchMock = vi.fn(async (_url: string) =>
+      new Response(JSON.stringify({ permissions: { push: true } }), { status: 200 }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    await testConnection({ ...cfg, apiBase: 'https://wb-proxy.workers.dev' })
+    const called = fetchMock.mock.calls[0][0] as string
+    expect(called).toBe('https://wb-proxy.workers.dev/repos/o/r')
+    expect(called.endsWith('/')).toBe(false)
+  })
+
+  it('网络错误：未配置代理时提示填中转地址', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }),
+    )
+    const r = await testConnection({ ...cfg, apiBase: '' })
+    expect(r.ok).toBe(false)
+    expect(r.code).toBe('network')
+    expect(r.message).toContain('中转地址')
+  })
+
+  it('网络错误：已配置代理时提示检查代理地址/白名单', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }),
+    )
+    const r = await testConnection({ ...cfg, apiBase: 'https://wb-proxy.workers.dev' })
+    expect(r.code).toBe('network')
+    expect(r.message).toContain('代理')
+  })
+
+  it('网络错误：超时（AbortError）给出超时提示', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        const e = new Error('aborted')
+        e.name = 'AbortError'
+        throw e
+      }),
+    )
+    const r = await testConnection(cfg)
+    expect(r.code).toBe('network')
+    expect(r.message).toContain('超时')
+  })
 })
