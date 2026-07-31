@@ -81,6 +81,16 @@ export async function pushRemote(input: PushInput, config: Config): Promise<Push
       const sha = await putFile(`kb/${s}.md`, md, input.remoteShas?.[s], config, `update ${a.title}`)
       manifest.articles[s].sha = sha
     } catch (e) {
+      if (e instanceof ConflictError && input.remoteShas?.[s] === undefined) {
+        // 文件可能已存在但未被 manifest 跟踪（如外部直写产生的孤儿文件）：
+        // 取远端当前 blob sha 重试一次，避免 422「sha wasn't supplied」
+        const cur = await getFile(`kb/${s}.md`, config)
+        if (cur && cur.sha) {
+          const sha = await putFile(`kb/${s}.md`, md, cur.sha, config, `update ${a.title}`)
+          manifest.articles[s].sha = sha
+          continue
+        }
+      }
       if (e instanceof ConflictError) {
         conflictSlug = s
         break
