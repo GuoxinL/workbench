@@ -6,8 +6,8 @@ function data(): WorkbenchData {
   return {
     version: 1,
     todos: [
-      { id: 'live', title: 't', desc: '', color: 'blue', status: 'todo', due: '', articleId: '', createdAt: 1, updatedAt: 1, deleted: false },
-      { id: 'fresh-tomb', title: 't', desc: '', color: 'blue', status: 'todo', due: '', articleId: '', createdAt: 1, updatedAt: 1, deleted: true },
+      { id: 'live', title: 't', desc: '', color: 'blue', status: 'todo', due: '', articleId: '', time: 1, createdAt: 1, updatedAt: 1, deleted: false },
+      { id: 'fresh-tomb', title: 't', desc: '', color: 'blue', status: 'todo', due: '', articleId: '', time: 1, createdAt: 1, updatedAt: 1, deleted: true },
     ],
     articles: [],
     updatedAt: 1,

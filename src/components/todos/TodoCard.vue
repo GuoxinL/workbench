@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { Todo } from '@/types'
 import { useDataStore } from '@/stores/data'
 import { colorHex, colorLabel } from '@/lib/colors'
+import { formatTime } from '@/lib/datetime'
 
 const props = defineProps<{ todo: Todo }>()
 const emit = defineEmits<{ edit: [] }>()
@@ -22,6 +23,8 @@ const dueLabel = computed(() =>
 const related = computed(() =>
   props.todo.articleId ? store.articleById(props.todo.articleId) : undefined,
 )
+
+const timeLabel = computed(() => formatTime(props.todo.time))
 
 function toggle() {
   // T8：done ↔ todo 互切
@@ -54,6 +57,7 @@ async function remove() {
       <div v-if="todo.desc" class="desc">{{ todo.desc }}</div>
       <div class="meta">
         <span v-if="dueLabel" class="due" :class="{ over: overdue }">{{ dueLabel }}</span>
+        <span class="time">{{ timeLabel }}</span>
         <router-link
           v-if="related"
           :to="{ name: 'articles', params: { id: related.id } }"
@@ -150,6 +154,9 @@ async function remove() {
 .due.over {
   color: #ef4444;
   font-weight: 600;
+}
+.time {
+  color: var(--muted);
 }
 .article-link {
   color: var(--brand);

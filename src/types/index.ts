@@ -9,6 +9,7 @@ export interface Todo {
   color: ColorKey
   status: TodoStatus
   due: string // 'YYYY-MM-DD'，空串表示无截止
+  time: number // 用户可编辑的创建时间（ms），展示格式 2026/7/31 23:35:34
   articleId: string // 关联知识库文章 id，空串表示无
   createdAt: number
   updatedAt: number

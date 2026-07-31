@@ -21,11 +21,16 @@ function emptyData(): WorkbenchData {
  */
 function migrateData(d: WorkbenchData): WorkbenchData {
   const todos = (d.todos ?? []).map((t: any) => {
-    if (t && typeof t === 'object' && 'noteId' in t && !('articleId' in t)) {
-      const { noteId, ...rest } = t
-      return { ...rest, articleId: noteId }
+    if (!t || typeof t !== 'object') return t
+    const next = { ...t }
+    // Note→Article 字段重命名（旧 wb.data.v1 兼容）
+    if ('noteId' in next && !('articleId' in next)) {
+      next.articleId = next.noteId
+      delete next.noteId
     }
-    return t
+    // 新增可编辑 time 字段的兼容：缺省用 createdAt
+    if (!('time' in next)) next.time = next.createdAt ?? Date.now()
+    return next
   })
   return { ...d, todos }
 }
@@ -108,6 +113,7 @@ export const useDataStore = defineStore('data', () => {
       color: (partial.color ?? 'blue') as ColorKey,
       status: (partial.status ?? 'todo') as TodoStatus,
       due: partial.due ?? '',
+      time: partial.time ?? Date.now(),
       articleId: partial.articleId ?? '',
       createdAt: Date.now(),
       updatedAt: Date.now(),

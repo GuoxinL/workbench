@@ -13,12 +13,13 @@ const visible = computed({
   set: (v) => emit('update:modelValue', v),
 })
 
-const form = ref<{ title: string; desc: string; color: ColorKey; status: TodoStatus; due: string }>({
+const form = ref<{ title: string; desc: string; color: ColorKey; status: TodoStatus; due: string; timeDate: Date | null }>({
   title: '',
   desc: '',
   color: 'blue',
   status: 'todo',
   due: '',
+  timeDate: null,
 })
 
 const statusOptions = [
@@ -42,6 +43,7 @@ watch(
         color: t.color,
         status: t.status,
         due: t.due,
+        timeDate: t.time ? new Date(t.time) : null,
       }
     }
   },
@@ -61,6 +63,7 @@ function save() {
     color: form.value.color,
     status: form.value.status,
     due: form.value.due,
+    time: form.value.timeDate ? form.value.timeDate.getTime() : Date.now(),
   })
   visible.value = false
 }
@@ -100,6 +103,17 @@ function onKeydown(e: KeyboardEvent) {
           type="date"
           value-format="YYYY-MM-DD"
           placeholder="无截止"
+          clearable
+          style="width: 100%"
+        />
+      </label>
+      <label class="field">
+        <span>时间</span>
+        <el-date-picker
+          v-model="form.timeDate"
+          type="datetime"
+          format="YYYY/M/D HH:mm:ss"
+          placeholder="留空使用当前时间"
           clearable
           style="width: 100%"
         />

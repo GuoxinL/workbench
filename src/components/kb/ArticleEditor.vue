@@ -171,6 +171,30 @@ const fromTodoTitle = computed(() => {
       />
     </div>
 
+    <details class="help">
+      <summary>Markdown / 双链引用语法帮助</summary>
+      <div class="help-body">
+        <p class="help-h">Markdown：</p>
+        <ul>
+          <li><code># 标题</code> / <code>## 小标题</code> 分级标题</li>
+          <li><code>**粗体**</code>、<code>*斜体*</code>、<code>`行内代码`</code></li>
+          <li><code>- 列表项</code>（无序）、<code>1. 列表项</code>（有序）</li>
+          <li><code>&gt; 引用</code> 引用块</li>
+          <li><code>[链接文字](https://example.com)</code> 外链</li>
+        </ul>
+        <p class="help-h">双链引用（知识库内跳转）：</p>
+        <ul>
+          <li><code>[[文章标题]]</code> 引用一篇已有文章，渲染为可点击链接；若文章不存在会提示创建</li>
+          <li><code>[[文章标题|显示名]]</code> 引用但显示自定义文字</li>
+          <li>改文章标题会自动改写所有指向它的引用</li>
+        </ul>
+        <p class="help-h">标签：</p>
+        <ul>
+          <li>切换到「编辑」后，在上方标签区输入框回车即可添加标签；去「标签」视图按标签聚合查看</li>
+        </ul>
+      </div>
+    </details>
+
     <div class="body">
       <textarea
         v-if="mode === 'edit'"
@@ -258,6 +282,39 @@ const fromTodoTitle = computed(() => {
   display: flex;
   gap: 16px;
   min-height: 0;
+}
+.help {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+.help summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 4px 0;
+}
+.help-body {
+  padding: 4px 0 8px;
+}
+.help-body ul {
+  margin: 4px 0 10px;
+  padding-left: 18px;
+}
+.help-body li {
+  margin: 2px 0;
+}
+.help-h {
+  font-weight: 600;
+  margin: 8px 0 2px;
+}
+.help code {
+  background: var(--bg);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-family: ui-monospace, monospace;
 }
 .content {
   flex: 1;

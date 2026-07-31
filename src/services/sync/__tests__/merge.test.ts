@@ -14,6 +14,7 @@ function todo(id: string, updatedAt: number, deleted = false) {
     status: 'todo' as const,
     due: '',
     articleId: '',
+    time: 1,
     createdAt: 1,
     updatedAt,
     deleted,
