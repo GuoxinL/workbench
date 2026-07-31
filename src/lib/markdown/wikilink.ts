@@ -5,9 +5,10 @@ import { escapeHtml } from '@/lib/html'
 /**
  * `[[标题]]` / `[[标题|别名]]` 双链扩展（设计 L1–L11）。
  * - 渲染为 <a class="wikilink" data-slug data-title data-id href="...">
- * - 若传入 resolve(title) 且返回 null → 追加 .missing 类（L5/L8）
- * - resolve 返回 id 时 href 指向 #/articles/<id>；否则降级为 #/kb/<slug>
- * - 点击跳转由 ArticleEditor 用 data-id 接管，href 仅作降级
+ * - resolve 返回 id → href 指向 #/articles/<id>
+ * - resolve 返回 null → 追加 .missing 类，href 降级为 #
+ * - 不传 resolve → href 降级为 #
+ * - 点击跳转由 ArticleEditor 用 data-id/data-slug 接管
  */
 export function wikilinkExtension(resolve?: (title: string) => string | null): TokenizerAndRendererExtension {
   return {
@@ -39,7 +40,7 @@ export function wikilinkExtension(resolve?: (title: string) => string | null): T
       const rawId = id ? escapeHtml(id) : ''
       const href = id
         ? `#/articles/${encodeURIComponent(id)}`
-        : `#/kb/${encodeURIComponent(s)}`
+        : '#'
       return `<a class="${cls}" data-slug="${rawSlug}" data-title="${rawTitle}" data-id="${rawId}" href="${escapeHtml(href)}">${escapeHtml(label)}</a>`
     },
   } as TokenizerAndRendererExtension

@@ -6,7 +6,7 @@ import { wikilinkExtension } from './wikilink'
 export interface RenderOptions {
   /**
    * 解析双链标题为文章 id（null 表示未找到，会标记 .missing，对应 L5/L8）。
-   * 不传则不标记缺失，所有双链按已存在渲染，href 降级为 #/kb/<slug>。
+   * 不传则不标记缺失，所有双链按已存在渲染。
    */
   resolve?: (title: string) => string | null
 }

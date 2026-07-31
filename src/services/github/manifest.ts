@@ -1,20 +1,15 @@
 import type { Article, Config, Manifest, ManifestEntry } from '@/types'
-import { slug } from '@/lib/slug'
 import { getFile, putFile, ConflictError } from './repoFile'
 
 export function emptyManifest(): Manifest {
   return { version: 1, updatedAt: Date.now(), articles: {}, todosSha: '' }
 }
 
-export function slugOf(title: string): string {
-  return slug(title)
-}
-
-/** 由本地文章数组构建 manifest 索引（sha 由调用方回填）。 */
+/** 由本地文章数组构建 manifest 索引（key 为 id，sha 由调用方回填）。 */
 export function indexFromArticles(articles: Article[]): Record<string, ManifestEntry> {
   const out: Record<string, ManifestEntry> = {}
   for (const a of articles) {
-    out[slug(a.title)] = {
+    out[a.id] = {
       id: a.id,
       title: a.title,
       updatedAt: a.updatedAt,
@@ -33,8 +28,7 @@ export interface ManifestDiff {
 }
 
 /**
- * 比对本地/远端 manifest，得出需拉/需推的 slug 集合（per-file LWW 的调度依据）。
- * 纯函数，便于单测。
+ * 比对本地/远端 manifest（id 为 key），得出需拉/需推的 id 集合（per-file LWW 的调度依据）。
  */
 export function diffManifests(local: Manifest, remote: Manifest): ManifestDiff {
   const pull: string[] = []

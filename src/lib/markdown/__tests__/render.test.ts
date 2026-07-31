@@ -20,7 +20,7 @@ describe('renderMarkdown', () => {
     expect(html).toContain('class="wikilink"')
     expect(html).toContain('data-slug="alpha"')
     expect(html).toContain('data-title="Alpha"')
-    expect(html).toContain('href="#/kb/alpha"')
+    expect(html).toContain('href="#"')
     expect(html).toContain('>Alpha</a>')
   })
 

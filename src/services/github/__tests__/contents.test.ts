@@ -26,14 +26,14 @@ describe('contents', () => {
     const m: Manifest = {
       version: 1,
       updatedAt: 1,
-      articles: { a: { id: '1', title: 'A', updatedAt: 100, deleted: false, sha: 's' } },
+      articles: { '1': { id: '1', title: 'A', updatedAt: 100, deleted: false, sha: 's' } },
       todosSha: '',
     }
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
         if (url.includes('manifest.json')) return new Response(JSON.stringify({ content: b64(JSON.stringify(m)), sha: 'ms' }), { status: 200, headers: { etag: 'ms' } })
-        if (url.includes('kb/a.md')) return new Response(JSON.stringify({ content: b64('---\ntitle: "A"\n---\n正文'), sha: 'as' }), { status: 200, headers: { etag: 'as' } })
+        if (url.includes('kb/1.md')) return new Response(JSON.stringify({ content: b64('---\ntitle: "A"\n---\n正文'), sha: 'as' }), { status: 200, headers: { etag: 'as' } })
         return new Response('', { status: 404 })
       }),
     )
@@ -58,9 +58,9 @@ describe('contents', () => {
     ]
     const r = await pushRemote({ articles, manifestSha: undefined }, config)
     expect(r.conflictSlug).toBeNull()
-    expect(puts.some((u) => u.includes('kb/a.md'))).toBe(true)
+    expect(puts.some((u) => u.includes('kb/1.md'))).toBe(true)
     expect(puts.some((u) => u.includes('manifest.json'))).toBe(true)
-    expect(r.manifest.articles.a.sha).toBe('new')
+    expect(r.manifest.articles['1'].sha).toBe('new')
   })
 
   it('pushRemote 更新已存在文件时携带远端 blob sha（修复 GitHub 422）', async () => {
@@ -75,7 +75,7 @@ describe('contents', () => {
     const articles: Article[] = [
       { id: '1', title: 'A', content: '正文', fromTodo: '', tags: [], createdAt: 1, updatedAt: 100, deleted: false },
     ]
-    const r = await pushRemote({ articles, manifestSha: undefined, remoteShas: { a: 'REMOTE_SHA_A' } }, config)
+    const r = await pushRemote({ articles, manifestSha: undefined, remoteShas: { '1': 'REMOTE_SHA_A' } }, config)
     expect(r.conflictSlug).toBeNull()
     const filePut = bodies.find((b) => b.message === 'update A')
     expect(filePut).toBeTruthy()
