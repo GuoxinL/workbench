@@ -5,6 +5,7 @@ import { useDataStore } from '@/stores/data'
 import { buildGraph } from '@/lib/links'
 import { extractExcerpt, extractFirstImage, safeImageUrl } from '@/lib/markdown/excerpt'
 import { COLOR_MAP } from '@/lib/colors'
+import TagCloud from './TagCloud.vue'
 
 const emit = defineEmits<{ select: [string]; create: [] }>()
 const store = useDataStore()
@@ -19,9 +20,11 @@ const inCount = (id: string) => graph.value.in.get(id)?.size ?? 0
 
 const list = computed(() => {
   const k = query.value.trim().toLowerCase()
+  const tg = activeTag.value
   return store.articles
     .filter((n) => !n.deleted)
     .filter((n) => (k === '' ? true : n.title.toLowerCase().includes(k) || n.content.toLowerCase().includes(k)))
+    .filter((n) => (tg === '' ? true : n.tags.includes(tg)))
     .sort((a, b) => b.updatedAt - a.updatedAt)
 })
 
@@ -38,6 +41,20 @@ function excerpt(md: string) { return extractExcerpt(md, 120) }
 function cover(md: string) { return safeImageUrl(extractFirstImage(md)) }
 
 watch(q, (v) => pushQuery(v))
+
+// 标签云：统计所有文章标签频次
+const activeTag = ref('')
+const tagStats = computed(() => {
+  const map = new Map<string, number>()
+  for (const a of store.articles) {
+    if (a.deleted) continue
+    for (const t of a.tags) map.set(t, (map.get(t) ?? 0) + 1)
+  }
+  return [...map.entries()].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count)
+})
+function onTagClick(tag: string) {
+  activeTag.value = activeTag.value === tag ? '' : tag
+}
 </script>
 
 <template>
@@ -47,6 +64,8 @@ watch(q, (v) => pushQuery(v))
       <input v-model="q" class="search" type="search" placeholder="搜索文章…" />
       <button class="new-btn" @click="emit('create')">＋ 新建</button>
     </div>
+
+    <TagCloud v-if="tagStats.length" :tags="tagStats" :active="activeTag" @select="onTagClick" />
 
     <p v-if="!list.length" class="empty muted">还没有文章，点击「＋ 新建」开始写作</p>
     <template v-else>

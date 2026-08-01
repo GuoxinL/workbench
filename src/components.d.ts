@@ -31,6 +31,7 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     SettingsSheet: typeof import('./components/common/SettingsSheet.vue')['default']
     SyncChip: typeof import('./components/common/SyncChip.vue')['default']
+    TagCloud: typeof import('./components/kb/TagCloud.vue')['default']
     TodoCard: typeof import('./components/todos/TodoCard.vue')['default']
     TodoComposer: typeof import('./components/todos/TodoComposer.vue')['default']
     TodoEditSheet: typeof import('./components/todos/TodoEditSheet.vue')['default']
