@@ -18,11 +18,73 @@ import { placeholder } from '@milkdown/crepe/feature/placeholder'
 import { defineComponent, h, ref } from 'vue'
 import type { EditorView } from '@milkdown/prose/view'
 // 项目用 unplugin 自动按需导入 Element Plus 组件（仅作用于模板标签），
-// 运行时 h() 调用需显式导入组件，故在此直接 import ElButton。
-import { ElButton } from 'element-plus'
+// 运行时 h() 调用需显式导入组件，故在此直接 import ElButton / ElIcon。
+import { ElButton, ElIcon } from 'element-plus'
 // 图标取自 Element Plus 官方图标库（element-plus 的配套依赖，随装随有）。
-// 加粗/斜体/行内代码/标题/有序列表无合适图标，用文字 + 语义样式呈现。
-import { List, Document, Link, Picture, ChatLineSquare, Minus } from '@element-plus/icons-vue'
+// 无序列表/引用/代码块/链接/图片/分割线用 EP 现成图标；加粗/斜体/行内代码/标题
+// 在 EP 中无对应图标，用同风格的内联 SVG 绘制，保证工具栏视觉统一。
+import { List, Document, Link, Picture, ChatLineSquare, Minus, Sort } from '@element-plus/icons-vue'
+
+// ── 工具栏内联 SVG 图标（与 EP 图标同风格：1em、stroke currentColor）──
+const SVG_PROPS = {
+  viewBox: '0 0 24 24',
+  width: '1em',
+  height: '1em',
+  fill: 'none',
+  stroke: 'currentColor',
+  'stroke-width': 2,
+  'stroke-linecap': 'round',
+  'stroke-linejoin': 'round',
+} as const
+
+const BoldIcon = defineComponent({
+  name: 'BoldIcon',
+  render: () =>
+    h('svg', SVG_PROPS, [
+      h('path', { d: 'M7 5h6a3.5 3.5 0 0 1 0 7H7z' }),
+      h('path', { d: 'M7 12h7a3.5 3.5 0 0 1 0 7H7z' }),
+    ]),
+})
+const ItalicIcon = defineComponent({
+  name: 'ItalicIcon',
+  render: () =>
+    h('svg', SVG_PROPS, [
+      h('line', { x1: 19, y1: 4, x2: 10, y2: 4 }),
+      h('line', { x1: 14, y1: 20, x2: 5, y2: 20 }),
+      h('line', { x1: 15, y1: 4, x2: 9, y2: 20 }),
+    ]),
+})
+const CodeIcon = defineComponent({
+  name: 'CodeIcon',
+  render: () =>
+    h('svg', SVG_PROPS, [
+      h('polyline', { points: '16 18 22 12 16 6' }),
+      h('polyline', { points: '8 6 2 12 8 18' }),
+    ]),
+})
+const makeHIcon = (n: number) =>
+  defineComponent({
+    name: `H${n}Icon`,
+    render: () =>
+      h('svg', SVG_PROPS, [
+        h(
+          'text',
+          {
+            x: 2,
+            y: 16,
+            'font-size': 12,
+            'font-weight': 700,
+            'font-family': 'sans-serif',
+            stroke: 'none',
+            fill: 'currentColor',
+          },
+          `H${n}`,
+        ),
+      ]),
+  })
+const H1Icon = makeHIcon(1)
+const H2Icon = makeHIcon(2)
+const H3Icon = makeHIcon(3)
 
 const MilkdownCore = defineComponent({
   name: 'MilkdownCore',
@@ -117,6 +179,47 @@ const MilkdownCore = defineComponent({
         ;(window as any).__milkdownView = view
         // 供常驻工具栏命令操作文档
         editorView.value = view as any
+        // 暴露同源命令 API 给右键菜单：右键菜单与工具栏复用完全相同的
+        // ProseMirror 结构化命令（cmd / insertImageNode / insertTableNode），
+        // 避免右键菜单各自用 insertText 插入原始 markdown 导致「不好使」。
+        ;(window as any).__milkdownApi = {
+          cmd,
+          insertImageNode: (src: string, alt = '') => {
+            const v: any = getLiveView()
+            if (!v) return
+            const img = v.state.schema.nodes.image
+            if (!img) return
+            v.dispatch(v.state.tr.replaceSelectionWith(img.create({ src, alt })))
+            v.focus()
+          },
+          insertTableNode: (rows: number, cols: number) => {
+            const v: any = getLiveView()
+            if (!v) return
+            const sch = v.state.schema
+            const table = sch.nodes.table
+            const tableRow = sch.nodes.table_row
+            const tableCell = sch.nodes.table_cell
+            const tableHeader = sch.nodes.table_header
+            const paragraph = sch.nodes.paragraph
+            if (!table || !tableRow || !tableCell || !paragraph) return
+            const makeCell = (header: boolean) =>
+              (header && tableHeader ? tableHeader : tableCell).create(
+                null,
+                paragraph.create(),
+              )
+            const makeRow = (header: boolean) =>
+              tableRow.create(
+                null,
+                Array.from({ length: cols }, () => makeCell(header)),
+              )
+            const tableNode = table.create(
+              null,
+              Array.from({ length: rows }, (_, i) => makeRow(i === 0)),
+            )
+            v.dispatch(v.state.tr.replaceSelectionWith(tableNode))
+            v.focus()
+          },
+        }
         scanning = true
         try {
           scanConvertWikilinks(view)
@@ -283,19 +386,19 @@ const MilkdownCore = defineComponent({
     }
     const toolbarButtons = () => {
       type BtnDef =
-        | { t: string; title: string; label?: string; icon?: any; styled?: 'b' | 'i' }
+        | { t: string; title: string; icon: any }
         | { sep: true }
       const defs: BtnDef[] = [
-        { t: 'bold', title: '加粗 (Ctrl+B)', label: 'B', styled: 'b' },
-        { t: 'italic', title: '斜体 (Ctrl+I)', label: 'I', styled: 'i' },
-        { t: 'code', title: '行内代码', label: '</>' },
+        { t: 'bold', title: '加粗 (Ctrl+B)', icon: BoldIcon },
+        { t: 'italic', title: '斜体 (Ctrl+I)', icon: ItalicIcon },
+        { t: 'code', title: '行内代码', icon: CodeIcon },
         { sep: true },
-        { t: 'h1', title: '标题 1', label: 'H1' },
-        { t: 'h2', title: '标题 2', label: 'H2' },
-        { t: 'h3', title: '标题 3', label: 'H3' },
+        { t: 'h1', title: '标题 1', icon: H1Icon },
+        { t: 'h2', title: '标题 2', icon: H2Icon },
+        { t: 'h3', title: '标题 3', icon: H3Icon },
         { sep: true },
         { t: 'ul', title: '无序列表', icon: List },
-        { t: 'ol', title: '有序列表', label: '1.' },
+        { t: 'ol', title: '有序列表', icon: Sort },
         { t: 'quote', title: '引用块', icon: ChatLineSquare },
         { t: 'codeblock', title: '代码块', icon: Document },
         { sep: true },
@@ -303,29 +406,21 @@ const MilkdownCore = defineComponent({
         { t: 'image', title: '插入图片', icon: Picture },
         { t: 'hr', title: '分割线', icon: Minus },
       ]
-      const renderLabel = (b: Extract<BtnDef, { t: string }>) => {
-        if (b.styled === 'b') return h('b', b.label)
-        if (b.styled === 'i') return h('i', b.label)
-        return b.label as string
-      }
-      return defs.map((b) =>
-        'sep' in b
-          ? h('span', { class: 'tb-sep' })
-          : h(
-              ElButton,
-              // mousedown 阻止默认行为，避免按钮抢走编辑器焦点导致选区丢失（ProseMirror 工具栏经典做法）
-              {
-                class: 'tb-btn',
-                size: 'small',
-                title: b.title,
-                onMousedown: (e: any) => e.preventDefault(),
-                onClick: () => cmd(b.t),
-              } as any,
-              b.icon
-                ? () => [h(b.icon), b.label ? ' ' + b.label : '']
-                : () => renderLabel(b),
-            ),
-      )
+      return defs.map((b) => {
+        if ('sep' in b) return h('span', { class: 'tb-sep' })
+        // mousedown 阻止默认行为，避免按钮抢走编辑器焦点导致选区丢失（ProseMirror 工具栏经典做法）
+        return h(
+          ElButton,
+          {
+            class: 'tb-btn',
+            size: 'small',
+            title: b.title,
+            onMousedown: (e: any) => e.preventDefault(),
+            onClick: () => cmd(b.t),
+          } as any,
+          () => h(ElIcon, {}, () => h(b.icon)),
+        )
+      })
     }
 
     return () => {

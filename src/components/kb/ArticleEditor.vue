@@ -102,15 +102,15 @@ const menuActions: MenuAction[] = [
   { key: 'link', label: '插入链接…', shortcut: 'Ctrl+K', action: 'link' },
   { key: 'table', label: '插入表格…', action: 'table' },
   { key: 'div1', label: '', divider: true },
-  { key: 'h1', label: '一级标题', shortcut: 'Ctrl+1', markdown: '# ' },
-  { key: 'h2', label: '二级标题', shortcut: 'Ctrl+2', markdown: '## ' },
-  { key: 'h3', label: '三级标题', shortcut: 'Ctrl+3', markdown: '### ' },
+  { key: 'h1', label: '一级标题', shortcut: 'Ctrl+1' },
+  { key: 'h2', label: '二级标题', shortcut: 'Ctrl+2' },
+  { key: 'h3', label: '三级标题', shortcut: 'Ctrl+3' },
   { key: 'div2', label: '', divider: true },
-  { key: 'ul', label: '无序列表', shortcut: 'Ctrl+Shift+U', markdown: '- ' },
-  { key: 'ol', label: '有序列表', shortcut: 'Ctrl+Shift+O', markdown: '1. ' },
-  { key: 'quote', label: '引用块', shortcut: 'Ctrl+Shift+Q', markdown: '> ' },
-  { key: 'code', label: '代码块', shortcut: 'Ctrl+Shift+K', markdown: '`\n\`' },
-  { key: 'hr', label: '分割线', markdown: '---\n' },
+  { key: 'ul', label: '无序列表', shortcut: 'Ctrl+Shift+U' },
+  { key: 'ol', label: '有序列表', shortcut: 'Ctrl+Shift+O' },
+  { key: 'quote', label: '引用块', shortcut: 'Ctrl+Shift+Q' },
+  { key: 'codeblock', label: '代码块', shortcut: 'Ctrl+Shift+K' },
+  { key: 'hr', label: '分割线' },
 ]
 
 function onEditorContextMenu(e: MouseEvent) {
@@ -120,16 +120,13 @@ function onEditorContextMenu(e: MouseEvent) {
   ctxMenu.value = { x: e.clientX, y: e.clientY, show: true }
 }
 
-/** 在 Milkdown 光标处插入文本 */
-function insertAtCursor(text: string) {
-  const view = (window as any).__milkdownView
-  if (!view) return
-  const tr = view.state.tr.insertText(text)
-  view.dispatch(tr)
-}
-
-async function handleMenuAction(key: string, a: MenuAction) {
+/** 右键菜单：与工具栏同源。所有格式/链接项直接复用 MilkdownEditor 暴露的
+ *  cmd 命令；图片（文件上传后）与表格走同源的节点插入函数。
+ *  彻底替换原先 insertAtCursor 插入原始 markdown 文本的错误做法。 */
+async function handleMenuAction(key: string, _a: MenuAction) {
   ctxMenu.value.show = false
+  const api = (window as any).__milkdownApi
+  if (!api) return
   if (key === 'image') {
     const input = document.createElement('input')
     input.type = 'file'
@@ -139,26 +136,22 @@ async function handleMenuAction(key: string, a: MenuAction) {
       if (!file) return
       try {
         const dataUri = await compressImage(file)
-        insertAtCursor(`![](${dataUri})`)
+        api.insertImageNode(dataUri)
       } catch { /* ignore */ }
     }
     input.click()
-  } else if (key === 'link') {
-    const url = prompt('链接 URL：', 'https://')
-    if (url) insertAtCursor(`[${url}](${url})`)
   } else if (key === 'table') {
     const rows = prompt('表格行数（默认 3）', '3')
     const cols = prompt('表格列数（默认 3）', '3')
     const r = parseInt(rows || '3', 10) || 3
     const c = parseInt(cols || '3', 10) || 3
-    let table = ''
-    for (let i = 0; i < r; i++) {
-      table += '| ' + Array(c).fill('  ').join(' | ') + ' |\n'
-      if (i === 0) table += '| ' + Array(c).fill('---').join(' | ') + ' |\n'
-    }
-    insertAtCursor(table)
-  } else if (a.markdown) {
-    insertAtCursor(a.markdown)
+    api.insertTableNode(r, c)
+  } else if (key === 'link') {
+    // 与工具栏「插入链接」同源：内部 prompt 收集文字 + URL
+    api.cmd('link')
+  } else {
+    // 格式项（h1-h3/ul/ol/quote/codeblock/hr）键名与 cmd 命令一一对应
+    api.cmd(key)
   }
 }
 

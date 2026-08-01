@@ -45,6 +45,27 @@ describe('MilkdownEditor 常驻格式工具栏命令', () => {
     const view = (window as any).__milkdownView
     expect(view).toBeTruthy()
 
+    // 图标完整性：13 个工具栏按钮全部含 svg 图标（加粗/斜体/行内代码/标题用内联
+    // SVG，其余用 Element Plus 图标），不再存在「纯文字无图标」的按钮。
+    const btns = [...(toolbar as Element).querySelectorAll('button')]
+    expect(btns.length).toBe(13)
+    expect(btns.every((b) => b.querySelector('svg'))).toBe(true)
+    // 进一步校验自定义内联 SVG 图标确实渲染出内部元素（非空 svg）：
+    // 加粗/斜体/行内代码为 <path>，标题为含 'H1/H2/H3' 文本的 <text>。
+    const byTitle = (kw: string) =>
+      btns.find((b) => (b.getAttribute('title') || '').includes(kw))!
+    expect(byTitle('加粗').querySelector('svg path')).toBeTruthy()
+    expect(byTitle('斜体').querySelector('svg line')).toBeTruthy()
+    expect(byTitle('行内代码').querySelector('svg polyline')).toBeTruthy()
+    const h1text = byTitle('标题 1').querySelector('svg text')?.textContent || ''
+    expect(h1text).toContain('H1')
+    const h2text = byTitle('标题 2').querySelector('svg text')?.textContent || ''
+    expect(h2text).toContain('H2')
+    const h3text = byTitle('标题 3').querySelector('svg text')?.textContent || ''
+    expect(h3text).toContain('H3')
+    // 有序列表改用 EP 的 Sort 图标（li 形式），确认有 svg 即可
+    expect(byTitle('有序列表').querySelector('svg')).toBeTruthy()
+
     // 1) 加粗：选中首段全部文本后点击「加粗」
     resetDoc(view, '你好世界，这是一段测试文本。')
     const doc = view.state.doc
@@ -135,6 +156,82 @@ describe('MilkdownEditor 常驻格式工具栏命令', () => {
       expect(hasHr).toBe(true)
     }
 
+    // 设置/恢复 prompt 桩：链接、图片按钮内部用 prompt 收集输入
+    const origPrompt = window.prompt
+    window.prompt = ((msg: string) => {
+      if (msg.includes('URL') || msg.includes('图片 URL')) return 'https://ex.com/x.png'
+      if (msg.includes('描述')) return '图'
+      return '文字'
+    }) as any
+    const setCursor = (pos: number) =>
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)))
+    const hasNode = (name: string) => {
+      let f = false
+      view.state.doc.descendants((n: any) => {
+        if (n.type.name === name) f = true
+      })
+      return f
+    }
+
+    // 7) H2 / H3：点击「标题 2 / 3」生成对应层级 heading
+    for (const [kw, level] of [['标题 2', 2], ['标题 3', 3]] as const) {
+      resetDoc(view, '标题段落。')
+      await new Promise((r) => setTimeout(r, 30))
+      findBtn(toolbar!, kw).click()
+      await new Promise((r) => setTimeout(r, 50))
+      const h = view.state.doc.firstChild
+      expect(h.type.name).toBe('heading')
+      expect(h.attrs.level).toBe(level)
+    }
+
+    // 8) 有序列表：点击「有序列表」生成 ordered_list
+    resetDoc(view, '有序列表项。')
+    await new Promise((r) => setTimeout(r, 30))
+    findBtn(toolbar!, '有序列表').click()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(hasNode('ordered_list')).toBe(true)
+
+    // 9) 引用块：点击「引用块」生成 blockquote
+    resetDoc(view, '引用内容。')
+    await new Promise((r) => setTimeout(r, 30))
+    findBtn(toolbar!, '引用块').click()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(hasNode('blockquote')).toBe(true)
+
+    // 10) 代码块：点击「代码块」生成 code_block
+    resetDoc(view, '代码内容。')
+    await new Promise((r) => setTimeout(r, 30))
+    findBtn(toolbar!, '代码块').click()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(hasNode('code_block')).toBe(true)
+
+    // 11) 链接：点击「插入链接」在光标处插入带 link 标记的文字
+    resetDoc(view, '链接测试。')
+    setCursor(1)
+    await new Promise((r) => setTimeout(r, 30))
+    findBtn(toolbar!, '插入链接').click()
+    await new Promise((r) => setTimeout(r, 50))
+    let linkHref: string | null = null
+    view.state.doc.descendants((n: any) => {
+      if (n.isText && n.marks.some((m: any) => m.type.name === 'link')) {
+        linkHref = n.marks.find((m: any) => m.type.name === 'link').attrs.href
+      }
+    })
+    expect(linkHref).toBe('https://ex.com/x.png')
+
+    // 12) 图片：点击「插入图片」在光标处插入 image 节点
+    resetDoc(view, '图片测试。')
+    setCursor(1)
+    await new Promise((r) => setTimeout(r, 30))
+    findBtn(toolbar!, '插入图片').click()
+    await new Promise((r) => setTimeout(r, 50))
+    let imgSrc: string | null = null
+    view.state.doc.descendants((n: any) => {
+      if (n.type.name === 'image') imgSrc = n.attrs.src
+    })
+    expect(imgSrc).toBe('https://ex.com/x.png')
+
+    window.prompt = origPrompt
     wrapper.unmount()
   }, 30000)
 })
