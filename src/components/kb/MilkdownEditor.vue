@@ -313,7 +313,14 @@ const MilkdownCore = defineComponent({
           ? h('span', { class: 'tb-sep' })
           : h(
               ElButton,
-              { class: 'tb-btn', size: 'small', title: b.title, onClick: () => cmd(b.t) } as any,
+              // mousedown 阻止默认行为，避免按钮抢走编辑器焦点导致选区丢失（ProseMirror 工具栏经典做法）
+              {
+                class: 'tb-btn',
+                size: 'small',
+                title: b.title,
+                onMousedown: (e: any) => e.preventDefault(),
+                onClick: () => cmd(b.t),
+              } as any,
               b.icon ? [h(b.icon), b.label ? ' ' + b.label : ''] : renderLabel(b),
             ),
       )
