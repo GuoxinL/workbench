@@ -63,9 +63,23 @@ const MilkdownCore = defineComponent({
     )
 
     const [, getEditor] = useInstance() as any
-    const waitEditor = (fn: (ed: Editor) => void, ms = 100) => {
-      setTimeout(() => { const ed = getEditor(); if (ed) fn(ed) }, ms)
+    // 轮询等待编辑器就绪：真实浏览器里 build 常超过 100ms。原实现仅单次检查、
+    // getEditor() 为 undefined 就放弃，导致 crepe 工具栏、window.__milkdownView、
+    // scanConvertWikilinks 全部不执行 —— 表现为「工具栏消失 / 右键插入失效」。
+    // 改为就绪前持续重试（带上限），就绪后仅执行一次。
+    let editorReadyHandled = false
+    const tryWhenReady = (fn: (ed: Editor) => void, tries = 0) => {
+      const ed = getEditor()
+      if (ed) {
+        if (editorReadyHandled) return
+        editorReadyHandled = true
+        fn(ed)
+        return
+      }
+      if (tries >= 120) return // 约 6s 仍不可用则放弃，避免死循环
+      setTimeout(() => tryWhenReady(fn, tries + 1), 50)
     }
+    const waitEditor = (fn: (ed: Editor) => void) => tryWhenReady(fn)
 
     waitEditor((ed) => {
       codeMirror(ed); toolbar(ed); table(ed); imageBlock(ed); placeholder(ed)
@@ -75,9 +89,15 @@ const MilkdownCore = defineComponent({
         // 暴露给 ArticleEditor 的 insertAtCursor（右键菜单插入）
         ;(window as any).__milkdownView = view
         scanning = true
-        scanConvertWikilinks(view)
-        scanning = false
-        onReady()
+        try {
+          scanConvertWikilinks(view)
+        } catch (e) {
+          // 扫描失败不应阻断就绪通知与 scanning 复位（否则 draftContent 永不更新）
+          console.error('[MilkdownEditor] scanConvertWikilinks failed', e)
+        } finally {
+          scanning = false
+          onReady()
+        }
       })
     })
     return () => h(Milkdown)
