@@ -99,4 +99,28 @@ describe('data store —— 待办 / 知识库文章', () => {
     const s2 = useDataStore()
     expect(s2.articles.filter((n) => !n.deleted).length).toBe(0)
   })
+
+  it('loadData 墓碑 + 存活混合时不清理（保留墓碑供同步引擎）', () => {
+    const s1 = useDataStore()
+    const a1 = s1.addArticle('存活')
+    const a2 = s1.addArticle('删除')
+    s1.removeArticle(a2.id) // 仅删除 a2
+    // 重载
+    setActivePinia(createPinia())
+    const s2 = useDataStore()
+    const live = s2.articles.filter((n) => !n.deleted)
+    expect(live.length).toBe(1)
+    expect(live[0].title).toBe('存活')
+    // 墓碑仍存在（供同步引擎传播删除）
+    const tombstones = s2.articles.filter((n) => n.deleted)
+    expect(tombstones.length).toBe(1)
+  })
+
+  it('loadData 空文章列表不报错（退化为 emptyData）', () => {
+    localStorage.setItem('wb.data.v1', JSON.stringify({ version: 1, todos: [], articles: [] }))
+    setActivePinia(createPinia())
+    const s = useDataStore()
+    expect(s.articles.length).toBe(0)
+    expect(s.todos.length).toBe(0)
+  })
 })
