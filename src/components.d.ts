@@ -16,6 +16,7 @@ declare module 'vue' {
     ArticleList: typeof import('./components/kb/ArticleList.vue')['default']
     ArticleOutline: typeof import('./components/kb/ArticleOutline.vue')['default']
     ColorSelect: typeof import('./components/todos/ColorSelect.vue')['default']
+    EditorContextMenu: typeof import('./components/kb/EditorContextMenu.vue')['default']
     ElButton: typeof import('element-plus/es')['ElButton']
     ElDatePicker: typeof import('element-plus/es')['ElDatePicker']
     ElDrawer: typeof import('element-plus/es')['ElDrawer']

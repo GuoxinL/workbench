@@ -1,12 +1,13 @@
 <script lang="ts">
-import { Editor, rootCtx, defaultValueCtx } from '@milkdown/kit/core'
+import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from '@milkdown/kit/core'
 import { commonmark } from '@milkdown/kit/preset/commonmark'
 import { gfm } from '@milkdown/kit/preset/gfm'
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener'
-import { replaceAll, getMarkdown } from '@milkdown/kit/utils'
+import { replaceAll, getMarkdown, $prose } from '@milkdown/kit/utils'
 import { nord } from '@milkdown/theme-nord'
 import { Milkdown, MilkdownProvider, useEditor, useInstance } from '@milkdown/vue'
 import { wikilinkSchema, wikilinkInputRule, wikilinkRemark } from '@/lib/markdown/milkdown-wikilink'
+import { pasteImagePlugin } from '@/lib/markdown/paste-image'
 import { defineComponent, h, watch } from 'vue'
 
 // 内层组件（必须在 MilkdownProvider 内，才能调 useEditor）
@@ -30,6 +31,7 @@ const MilkdownCore = defineComponent({
         .use(wikilinkSchema)
         .use(wikilinkRemark)
         .use(wikilinkInputRule)
+        .use($prose(() => pasteImagePlugin()))
         .use(listener),
     )
 
@@ -47,6 +49,19 @@ const MilkdownCore = defineComponent({
         }
       },
     )
+
+    // 暴露编辑器引用到 window，供右键菜单等直接插入
+    ;(window as any).__milkdownEditor = getEditor
+
+    // 延迟暴露 editorView 供 ArticleEditor 直接插入文本
+    setTimeout(() => {
+      const ed = getEditor()
+      if (ed) {
+        ed.action((ctx: any) => {
+          ;(window as any).__milkdownView = ctx.get(editorViewCtx)
+        })
+      }
+    }, 500)
 
     return () => h(Milkdown)
   },

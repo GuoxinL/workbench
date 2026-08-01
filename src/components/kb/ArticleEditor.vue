@@ -9,6 +9,9 @@ import MilkdownEditor from './MilkdownEditor.vue'
 import ArticleOutline from './ArticleOutline.vue'
 import RelatedPanel from './RelatedPanel.vue'
 import LinksPanel from './LinksPanel.vue'
+import EditorContextMenu from './EditorContextMenu.vue'
+import type { MenuAction } from './EditorContextMenu.vue'
+import { compressImage } from '@/lib/image'
 
 const props = defineProps<{ article: Article | null }>()
 const emit = defineEmits<{ open: [string]; changed: [] }>()
@@ -92,6 +95,74 @@ function refreshMissingLinks() {
 watchDebounced(() => store.articles, refreshMissingLinks, { debounce: 300 })
 onMounted(refreshMissingLinks)
 
+// ── 右键上下文菜单 ──
+const ctxMenu = ref({ x: 0, y: 0, show: false })
+
+const menuActions: MenuAction[] = [
+  { key: 'image', label: '插入图片…', shortcut: 'Ctrl+V', action: 'image' },
+  { key: 'link', label: '插入链接…', shortcut: 'Ctrl+K', action: 'link' },
+  { key: 'table', label: '插入表格…', action: 'table' },
+  { key: 'div1', label: '', divider: true },
+  { key: 'h1', label: '一级标题', shortcut: 'Ctrl+1', markdown: '# ' },
+  { key: 'h2', label: '二级标题', shortcut: 'Ctrl+2', markdown: '## ' },
+  { key: 'h3', label: '三级标题', shortcut: 'Ctrl+3', markdown: '### ' },
+  { key: 'div2', label: '', divider: true },
+  { key: 'ul', label: '无序列表', shortcut: 'Ctrl+Shift+U', markdown: '- ' },
+  { key: 'ol', label: '有序列表', shortcut: 'Ctrl+Shift+O', markdown: '1. ' },
+  { key: 'quote', label: '引用块', shortcut: 'Ctrl+Shift+Q', markdown: '> ' },
+  { key: 'code', label: '代码块', shortcut: 'Ctrl+Shift+K', markdown: '`\n\`' },
+  { key: 'hr', label: '分割线', markdown: '---\n' },
+]
+
+function onEditorContextMenu(e: MouseEvent) {
+  e.preventDefault()
+  const el = (e.target as HTMLElement).closest('.milkdown, .milkdown-editor, .ProseMirror')
+  if (!el) return
+  ctxMenu.value = { x: e.clientX, y: e.clientY, show: true }
+}
+
+/** 在 Milkdown 光标处插入文本 */
+function insertAtCursor(text: string) {
+  const view = (window as any).__milkdownView
+  if (!view) return
+  const tr = view.state.tr.insertText(text)
+  view.dispatch(tr)
+}
+
+async function handleMenuAction(key: string, a: MenuAction) {
+  ctxMenu.value.show = false
+  if (key === 'image') {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      try {
+        const dataUri = await compressImage(file)
+        insertAtCursor(`![](${dataUri})`)
+      } catch { /* ignore */ }
+    }
+    input.click()
+  } else if (key === 'link') {
+    const url = prompt('链接 URL：', 'https://')
+    if (url) insertAtCursor(`[${url}](${url})`)
+  } else if (key === 'table') {
+    const rows = prompt('表格行数（默认 3）', '3')
+    const cols = prompt('表格列数（默认 3）', '3')
+    const r = parseInt(rows || '3', 10) || 3
+    const c = parseInt(cols || '3', 10) || 3
+    let table = ''
+    for (let i = 0; i < r; i++) {
+      table += '| ' + Array(c).fill('  ').join(' | ') + ' |\n'
+      if (i === 0) table += '| ' + Array(c).fill('---').join(' | ') + ' |\n'
+    }
+    insertAtCursor(table)
+  } else if (a.markdown) {
+    insertAtCursor(a.markdown)
+  }
+}
+
 // 大纲跳转：向编辑区内的 Milkdown 发送滚动事件
 /** 大纲跳转：在 Milkdown 编辑区滚动到匹配的标题 */
 function onJumpToHeading(id: string) {
@@ -156,7 +227,7 @@ const fromTodoTitle = computed(() => {
 <template>
   <section v-if="article" class="editor">
     <!-- 中栏：编辑区 -->
-    <div class="editor-scroll" @click="onWikilinkClick">
+    <div class="editor-scroll" @click="onWikilinkClick" @contextmenu.prevent="onEditorContextMenu">
       <div class="bar">
         <input
           v-model="draftTitle"
@@ -221,6 +292,16 @@ const fromTodoTitle = computed(() => {
 
     <!-- Top 按钮 -->
     <button class="top-btn" title="回到顶部" @click="scrollTop">⬆</button>
+
+    <!-- 右键上下文菜单 -->
+    <EditorContextMenu
+      v-if="ctxMenu.show"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :actions="menuActions"
+      @select="handleMenuAction"
+      @close="ctxMenu.show = false"
+    />
   </section>
   <section v-else class="editor empty muted">
     <p>从列表选择一篇文章，或点击「＋ 新建」</p>
