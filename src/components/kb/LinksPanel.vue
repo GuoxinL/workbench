@@ -5,16 +5,19 @@ import { useDataStore } from '@/stores/data'
 import { buildGraph, extractRefs } from '@/lib/links'
 import { slug } from '@/lib/slug'
 
-const props = defineProps<{ article: Article }>()
+const props = defineProps<{ article: Article; content?: string }>()
 const emit = defineEmits<{ open: [string] }>()
 const store = useDataStore()
 
 const graph = computed(() => buildGraph(store.articles))
 const selfSlug = computed(() => slug(props.article.title))
 
+// 出链优先用实时草稿内容（编辑器输入即反映），回退到已保存内容
+const sourceContent = computed(() => props.content ?? props.article.content)
+
 // 出链（L3 / L5 / L6）
 const outgoing = computed(() => {
-  const refs = extractRefs(props.article.content)
+  const refs = extractRefs(sourceContent.value)
   return refs.map((r) => {
     const s = slug(r.title)
     const target = store.articles.find((n) => !n.deleted && slug(n.title) === s)

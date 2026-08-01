@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { watchDebounced } from '@vueuse/core'
 import type { Article } from '@/types'
 import { useDataStore } from '@/stores/data'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { slug } from '@/lib/slug'
+import { markMissingLinks } from '@/lib/markdown/wikilink-mark'
 import MilkdownEditor from './MilkdownEditor.vue'
 import ArticleOutline from './ArticleOutline.vue'
 import RelatedPanel from './RelatedPanel.vue'
@@ -68,6 +69,9 @@ defineExpose({ flush })
 function onWikilinkClick(e: MouseEvent) {
   const el = (e.target as HTMLElement).closest('.wikilink') as HTMLElement | null
   if (!el) return
+  // 必须阻止 <a href="#"> 的默认导航：否则 hash 被清空为 '#'（路由 '/'），
+  // 会触发 router 的 redirect '/todos'，导致点击双链跳转到待办页（#/todos）。
+  e.preventDefault()
   const s = el.getAttribute('data-slug')
   if (!s) return
   const target = store.articles.find((n) => !n.deleted && slug(n.title) === s)
@@ -85,15 +89,10 @@ function onWikilinkClick(e: MouseEvent) {
 /** 扫描 Milkdown 中的 wikilink，标记缺失目标为红色 */
 function refreshMissingLinks() {
   requestAnimationFrame(() => {
-    document.querySelectorAll('.milkdown .wikilink').forEach((el) => {
-      const s = el.getAttribute('data-slug')
-      const existed = s ? store.articles.some((n) => !n.deleted && slug(n.title) === s) : false
-      el.classList.toggle('missing', !existed)
-    })
+    markMissingLinks(document, store.articles)
   })
 }
 watchDebounced(() => store.articles, refreshMissingLinks, { debounce: 300 })
-onMounted(refreshMissingLinks)
 
 // ── 右键上下文菜单 ──
 const ctxMenu = ref({ x: 0, y: 0, show: false })
@@ -280,9 +279,10 @@ const fromTodoTitle = computed(() => {
         :key="article?.id"
         :model-value="draftContent"
         @update:model-value="onContentChange"
+        @ready="refreshMissingLinks"
       />
 
-      <LinksPanel :article="article" @open="emit('open', $event)" />
+      <LinksPanel :article="article" :content="draftContent" @open="emit('open', $event)" />
     </div>
 
     <!-- 右栏：大纲(上2/3) + 推荐(下1/3) -->

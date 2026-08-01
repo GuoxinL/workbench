@@ -10,22 +10,9 @@ import { $markAttr, $markSchema, $inputRule, $remark } from '@milkdown/utils'
 import { InputRule } from 'prosemirror-inputrules'
 import type { Root } from 'mdast'
 import { visit } from 'unist-util-visit'
+import { slug } from '@/lib/slug'
 
 const TAG = '[wikilink]'
-
-/** 标题归一化，空串或全空白返回占位 'untitled' 避免下游异常 */
-function slug(s: unknown): string {
-  if (typeof s !== 'string') {
-    console.warn(`${TAG} slug() received non-string:`, typeof s, s)
-    return 'untitled'
-  }
-  const trimmed = s.trim()
-  if (!trimmed) {
-    console.warn(`${TAG} slug() received empty/whitespace-only title`)
-    return 'untitled'
-  }
-  return trimmed.toLowerCase().replace(/\s+/g, ' ')
-}
 
 /** 从 wiki:// 协议 URL 提取原始标题；解码失败则返回占位 */
 function parseWikiUrl(url: string): string {
@@ -83,9 +70,16 @@ export const wikilinkSchema = $markSchema('wikilink', () => ({
   },
   toMarkdown: {
     match: (mark) => mark.type.name === 'wikilink',
-    runner: (state, mark) => {
+    // 关键：必须返回 truthy（state.addNode 返回 state 本身），否则序列化器会
+    // 在 `[[title]]` 之后再把节点原始文本（别名）重复输出一遍，导致内容被
+    // 污染（如 `[[标题]]别名别名`）。node.text 即编辑器中的展示别名，
+    // 据此还原 `[[title|alias]]`，保证保存/重载后别名不丢。
+    runner: (state, mark, node) => {
       const title = (mark.attrs.title as string) || 'untitled'
-      state.addNode('text', undefined, `[[${title}]]`)
+      const alias = (node && node.isText ? (node as any).text : '') || title
+      const serialized = alias && alias !== title ? `[[${title}|${alias}]]` : `[[${title}]]`
+      state.addNode('text', undefined, serialized)
+      return true
     },
   },
 }))
