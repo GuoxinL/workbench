@@ -14,6 +14,39 @@ import { table } from '@milkdown/crepe/feature/table'
 import { imageBlock } from '@milkdown/crepe/feature/image-block'
 import { placeholder } from '@milkdown/crepe/feature/placeholder'
 import { defineComponent, h, watch } from 'vue'
+import type { EditorView } from '@milkdown/prose/view'
+
+function slug(s: string) { return s.trim().toLowerCase().replace(/\s+/g, ' ') }
+
+/** 扫描 ProseMirror 文档，把 [[标题|别名]] 文本转为 wikilink mark */
+function scanConvertWikilinks(view: EditorView) {
+  const ranges: { from: number; to: number; title: string; alias: string }[] = []
+  view.state.doc.descendants((node, pos) => {
+    if (!node.isText) return
+    const text = node.text || ''
+    const re = /\[\[([^\|\]]+)(?:\|([^\]]+))?\]\]/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(text)) !== null) {
+      ranges.push({
+        from: pos + m.index,
+        to: pos + m.index + m[0].length,
+        title: m[1].trim(),
+        alias: m[2]?.trim() || m[1].trim(),
+      })
+    }
+  })
+  if (ranges.length === 0) return
+  const tr = view.state.tr
+  ranges.sort((a, b) => b.from - a.from) // 从后往前替换保位置
+  for (const r of ranges) {
+    const mark = view.state.schema.marks.wikilink?.create({
+      title: r.title,
+      slug: slug(r.title),
+    })
+    if (mark) tr.replaceWith(r.from, r.to, view.state.schema.text(r.alias, [mark]))
+  }
+  view.dispatch(tr)
+}
 
 // 内层组件
 const MilkdownCore = defineComponent({
@@ -54,6 +87,11 @@ const MilkdownCore = defineComponent({
           table(ed)
           imageBlock(ed)
           placeholder(ed)
+          // 初始加载后扫描 wikilink
+          ed.action((ctx: any) => {
+            const view = ctx.get(editorViewCtx) as EditorView
+            if (view) scanConvertWikilinks(view)
+          })
         }, 100)
       },
       { immediate: true },
@@ -67,6 +105,11 @@ const MilkdownCore = defineComponent({
         const current = ed.action(getMarkdown())
         if (current !== (val ?? '')) {
           ed.action(replaceAll(val ?? ''))
+          // Crepe 绕过 remark 流水线，手动扫描转换 wikilink
+          setTimeout(() => {
+            const ev = (window as any).__milkdownView as EditorView | undefined
+            if (ev) scanConvertWikilinks(ev)
+          }, 200)
         }
       },
     )
