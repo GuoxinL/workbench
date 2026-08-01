@@ -10,6 +10,7 @@ import ArticleOutline from './ArticleOutline.vue'
 import RelatedPanel from './RelatedPanel.vue'
 import LinksPanel from './LinksPanel.vue'
 import EditorContextMenu from './EditorContextMenu.vue'
+import MarkdownToolbar from './MarkdownToolbar.vue'
 import type { MenuAction } from './EditorContextMenu.vue'
 import { compressImage } from '@/lib/image'
 
@@ -252,6 +253,8 @@ const fromTodoTitle = computed(() => {
         <span v-for="t in draftTags" :key="t" class="tag" :style="{ background: tagColor(t) }" @click="removeTag(t)">{{ t }} ×</span>
         <input v-model="tagInput" class="tag-input" placeholder="加标签回车" @keydown.enter.prevent="addTag(tagInput)" />
       </div>
+
+      <MarkdownToolbar />
 
       <details class="help">
         <summary>Markdown / 双链引用语法帮助</summary>
