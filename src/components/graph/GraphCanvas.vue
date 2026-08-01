@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, shallowRef, triggerRef } from 'vue'
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation } from 'd3-force'
 import { useRouter } from 'vue-router'
 import { useDataStore } from '@/stores/data'
@@ -21,8 +21,8 @@ interface GLink {
   target: GNode
 }
 
-const nodes = ref<GNode[]>([])
-const links = ref<GLink[]>([])
+const nodes = shallowRef<GNode[]>([])
+const links = shallowRef<GLink[]>([])
 const transform = reactive({ x: 40, y: 40, k: 1 })
 const svgRef = ref<SVGSVGElement | null>(null)
 
@@ -137,6 +137,11 @@ function layout() {
   for (let i = 0; i < 300; i++) sim.tick()
   nodes.value = ns
   links.value = ls as any
+  ;(window as any).__graphDebug = {
+    ...(window as any).__graphDebug,
+    nodesFinal: nodes.value.length,
+    linksFinal: links.value.length,
+  }
 }
 
 function toggleTag(tag: string) {
