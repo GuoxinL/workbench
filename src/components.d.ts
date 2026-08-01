@@ -23,7 +23,6 @@ declare module 'vue' {
     ElInputNumber: typeof import('element-plus/es')['ElInputNumber']
     ElSegmented: typeof import('element-plus/es')['ElSegmented']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
-    GraphCanvas: typeof import('./components/graph/GraphCanvas.vue')['default']
     LinksPanel: typeof import('./components/kb/LinksPanel.vue')['default']
     MilkdownEditor: typeof import('./components/kb/MilkdownEditor.vue')['default']
     RelatedPanel: typeof import('./components/kb/RelatedPanel.vue')['default']
