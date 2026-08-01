@@ -42,11 +42,8 @@ function cover(content: string) {
 
 <style scoped>
 .related {
-  width: 180px;
-  flex: none;
   overflow-y: auto;
-  padding: 16px 10px;
-  border-left: 1px solid var(--line);
+  padding: 10px;
   font-size: 12px;
 }
 .label {

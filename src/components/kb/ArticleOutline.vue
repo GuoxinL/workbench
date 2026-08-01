@@ -47,11 +47,9 @@ const headings = computed<Gh[]>(() =>
 
 <style scoped>
 .outline {
-  width: 200px;
-  flex: none;
   overflow-y: auto;
-  padding: 16px 12px;
-  border-right: 1px solid var(--line);
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--line);
   font-size: 13px;
 }
 .label {

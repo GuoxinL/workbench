@@ -145,9 +145,6 @@ const fromTodoTitle = computed(() => {
 
 <template>
   <section v-if="article" class="editor">
-    <!-- 左栏：大纲 -->
-    <ArticleOutline :content="draftContent" @jump="onJumpToHeading" />
-
     <!-- 中栏：编辑区 -->
     <div class="editor-scroll" @click="onWikilinkClick">
       <div class="bar">
@@ -206,8 +203,11 @@ const fromTodoTitle = computed(() => {
       <LinksPanel :article="article" @open="emit('open', $event)" />
     </div>
 
-    <!-- 右栏：推荐 -->
-    <RelatedPanel :article="article" @open="emit('open', $event)" />
+    <!-- 右栏：大纲(上2/3) + 推荐(下1/3) -->
+    <div class="right-side">
+      <ArticleOutline :content="draftContent" @jump="onJumpToHeading" />
+      <RelatedPanel :article="article" @open="emit('open', $event)" />
+    </div>
 
     <!-- Top 按钮 -->
     <button class="top-btn" title="回到顶部" @click="scrollTop">⬆</button>
@@ -231,6 +231,24 @@ const fromTodoTitle = computed(() => {
   overflow-y: auto;
   padding: 16px 24px 120px;
   min-width: 0;
+}
+
+.right-side {
+  width: 200px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.right-side > :first-child {
+  flex: 2;
+  overflow-y: auto;
+  min-height: 0;
+}
+.right-side > :last-child {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .bar {
