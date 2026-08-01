@@ -66,26 +66,26 @@ function onTable() {
   insertText(t)
 }
 
-const btns = [
-  { t: 'B', tip: '粗体', fn: onBold },
-  { t: 'I', tip: '斜体', fn: onItalic },
-  { t: 'S', tip: '删除线', fn: onStrike },
-  { t: '`', tip: '行内代码', fn: onCode },
+const btns: { t: string; tip?: string; key?: string; fn?: () => void }[] = [
+  { t: 'B', tip: '粗体',     key: 'Ctrl+B',          fn: onBold },
+  { t: 'I', tip: '斜体',     key: 'Ctrl+I',          fn: onItalic },
+  { t: 'S', tip: '删除线',    key: 'Ctrl+Shift+X',    fn: onStrike },
+  { t: '`', tip: '行内代码',   key: 'Ctrl+Shift+C',    fn: onCode },
   { t: 'sep' },
-  { t: 'H1', tip: '一级标题', fn: onH1 },
-  { t: 'H2', tip: '二级标题', fn: onH2 },
-  { t: 'H3', tip: '三级标题', fn: onH3 },
+  { t: 'H1', tip: '一级标题',  key: 'Ctrl+1',          fn: onH1 },
+  { t: 'H2', tip: '二级标题',  key: 'Ctrl+2',          fn: onH2 },
+  { t: 'H3', tip: '三级标题',  key: 'Ctrl+3',          fn: onH3 },
   { t: 'sep' },
-  { t: '≡', tip: '无序列表', fn: onUl },
-  { t: '1.', tip: '有序列表', fn: onOl },
-  { t: '❝', tip: '引用', fn: onQuote },
+  { t: '≡', tip: '无序列表',  key: 'Ctrl+Shift+U',    fn: onUl },
+  { t: '1.', tip: '有序列表',  key: 'Ctrl+Shift+O',    fn: onOl },
+  { t: '❝', tip: '引用',      key: 'Ctrl+Shift+Q',    fn: onQuote },
   { t: 'sep' },
-  { t: '{}', tip: '代码块', fn: onCodeBlock },
-  { t: '⊞', tip: '表格', fn: onTable },
+  { t: '{}', tip: '代码块',    key: 'Ctrl+Shift+K',    fn: onCodeBlock },
+  { t: '⊞', tip: '表格',      key: 'Ctrl+T',          fn: onTable },
   { t: 'sep' },
-  { t: '🔗', tip: '链接', fn: onLink },
-  { t: '🖼', tip: '图片', fn: onImage },
-  { t: '—', tip: '分割线', fn: onHr },
+  { t: '🔗', tip: '链接',     key: 'Ctrl+K',          fn: onLink },
+  { t: '🖼', tip: '图片',     key: 'Ctrl+V',          fn: onImage },
+  { t: '—', tip: '分割线',    key: '',                fn: onHr },
 ]
 </script>
 
@@ -93,7 +93,9 @@ const btns = [
   <div class="toolbar">
     <template v-for="b in btns" :key="b.t">
       <span v-if="b.t === 'sep'" class="sep" />
-      <button v-else :title="b.tip" @click="b.fn">{{ b.t }}</button>
+      <span v-else class="tip-wrap" :data-tip="b.key ? b.tip + ' (' + b.key + ')' : b.tip">
+        <button @click="b.fn?.()">{{ b.t }}</button>
+      </span>
     </template>
   </div>
 </template>
@@ -111,4 +113,30 @@ const btns = [
 }
 .toolbar button:hover { background: #fff; }
 .sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+
+/* Custom tooltip */
+.tip-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.tip-wrap::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background: #333;
+  color: #fff;
+  font-size: 11px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 100;
+}
+.tip-wrap:hover::after {
+  opacity: 1;
+}
 </style>
