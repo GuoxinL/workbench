@@ -11,11 +11,19 @@ import { InputRule } from 'prosemirror-inputrules'
 import type { Root } from 'mdast'
 import { visit } from 'unist-util-visit'
 
+const TAG = '[wikilink]'
+
 /** 标题归一化，空串或全空白返回占位 'untitled' 避免下游异常 */
 function slug(s: unknown): string {
-  if (typeof s !== 'string') return 'untitled'
+  if (typeof s !== 'string') {
+    console.warn(`${TAG} slug() received non-string:`, typeof s, s)
+    return 'untitled'
+  }
   const trimmed = s.trim()
-  if (!trimmed) return 'untitled'
+  if (!trimmed) {
+    console.warn(`${TAG} slug() received empty/whitespace-only title`)
+    return 'untitled'
+  }
   return trimmed.toLowerCase().replace(/\s+/g, ' ')
 }
 
@@ -24,7 +32,8 @@ function parseWikiUrl(url: string): string {
   try {
     const title = decodeURIComponent(url.replace(/^wiki:\/\//, ''))
     return title.trim() || 'untitled'
-  } catch {
+  } catch (e) {
+    console.warn(`${TAG} parseWikiUrl decode failed:`, url, e)
     return 'untitled'
   }
 }
@@ -44,12 +53,17 @@ export const wikilinkSchema = $markSchema('wikilink', () => ({
       (node as any).url.startsWith('wiki://'),
     runner: (state, node, markType) => {
       const url = (node as any).url as string
-      if (!url) return
+      if (!url) {
+        console.warn(`${TAG} parseMarkdown: link node has no url`)
+        return
+      }
       const title = parseWikiUrl(url)
       const children = (node as any).children
       state.openMark(markType, { title, slug: slug(title) })
       if (children && Array.isArray(children)) {
         state.next(children)
+      } else {
+        console.warn(`${TAG} parseMarkdown: link node has no children for "${title}"`)
       }
       state.closeMark(markType)
     },
@@ -73,12 +87,19 @@ const MAX_PARTS = 1000
 export const wikilinkRemark = $remark('wikilinkRemark', () => {
   return (tree: Root) => {
     visit(tree, 'text', (node, index, parent) => {
-      // 根节点直接子节点或 parent 缺失时跳过
-      if (!parent || index == null) return
-      if (!Array.isArray(parent.children)) return
+      if (!parent || index == null) {
+        return // 根节点直接子节点，静默跳过
+      }
+      if (!Array.isArray(parent.children)) {
+        console.warn(`${TAG} remark: parent.children is not an array, type=${parent.type}`)
+        return
+      }
 
       const value = (node as any).value as string | undefined
-      if (!value || typeof value !== 'string') return
+      if (!value || typeof value !== 'string') {
+        console.warn(`${TAG} remark: text node has no valid value, node=`, node)
+        return
+      }
 
       const re = /\[\[([^\|\]]+)(?:\|([^\]]+))?\]\]/g
       const parts: { type: string; [k: string]: any }[] = []
@@ -87,7 +108,10 @@ export const wikilinkRemark = $remark('wikilinkRemark', () => {
       let iteration = 0
 
       while ((m = re.exec(value)) !== null) {
-        if (++iteration > MAX_PARTS) break
+        if (++iteration > MAX_PARTS) {
+          console.warn(`${TAG} remark: hit MAX_PARTS=${MAX_PARTS}, stopped scanning "${value.slice(0, 80)}..."`)
+          break
+        }
 
         const title = (m[1] ?? '').trim()
         if (!title) continue
@@ -112,8 +136,8 @@ export const wikilinkRemark = $remark('wikilinkRemark', () => {
 
       try {
         parent.children.splice(index, 1, ...(parts as any))
-      } catch {
-        // splice 越界或父节点不可变时静默忽略
+      } catch (e) {
+        console.warn(`${TAG} remark: splice failed, index=${index}, parent=${parent.type}, parts=${parts.length}`, e)
       }
     })
   }
@@ -125,21 +149,26 @@ export const wikilinkInputRule = $inputRule(
     new InputRule(
       /\[\[([^\|\]]+)(?:\|([^\]]+))?\]\]$/,
       (state, match, start, end) => {
-        const title = (match[1] ?? '').trim()
-        if (!title) {
+        const rawTitle = (match[1] ?? '').trim()
+        if (!rawTitle) {
+          console.warn(`${TAG} inputRule: empty title in match "${match[0]}" — removing`)
           state.tr.delete(start, end)
           return state.tr
         }
-        const alias = (match[2] ?? title).trim() || title
+        const alias = (match[2] ?? rawTitle).trim() || rawTitle
         const markType = state.schema.marks.wikilink
-        if (!markType) return state.tr
+        if (!markType) {
+          console.warn(`${TAG} inputRule: schema.marks.wikilink not registered — skipping`)
+          return state.tr
+        }
 
         try {
-          const mark = markType.create({ title, slug: slug(title) })
+          const mark = markType.create({ title: rawTitle, slug: slug(rawTitle) })
           const { tr } = state
           tr.replaceWith(start, end, state.schema.text(alias, [mark]))
           return tr
-        } catch {
+        } catch (e) {
+          console.warn(`${TAG} inputRule: mark.create/replaceWith failed for "${rawTitle}"`, e)
           return state.tr
         }
       },
