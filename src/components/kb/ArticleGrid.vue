@@ -24,7 +24,7 @@ const list = computed(() => {
   return store.articles
     .filter((n) => !n.deleted)
     .filter((n) => (k === '' ? true : n.title.toLowerCase().includes(k) || n.content.toLowerCase().includes(k)))
-    .filter((n) => (tg === '' ? true : n.tags.includes(tg)))
+    .filter((n) => (tg === ALL_TAG ? true : n.tags.includes(tg)))
     .sort((a, b) => b.updatedAt - a.updatedAt)
 })
 
@@ -42,18 +42,23 @@ function cover(md: string) { return safeImageUrl(extractFirstImage(md)) }
 
 watch(q, (v) => pushQuery(v))
 
-// 标签云：统计所有文章标签频次
-const activeTag = ref('')
+// 标签云：统计所有文章标签频次，"全部" 为默认选中
+const ALL_TAG = '__all__'
+const allCount = computed(() => store.articles.filter((a) => !a.deleted).length)
+const activeTag = ref(ALL_TAG)
+
 const tagStats = computed(() => {
   const map = new Map<string, number>()
   for (const a of store.articles) {
     if (a.deleted) continue
     for (const t of a.tags) map.set(t, (map.get(t) ?? 0) + 1)
   }
-  return [...map.entries()].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count)
+  const list = [...map.entries()].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count)
+  return [{ tag: ALL_TAG, count: allCount.value }, ...list]
 })
+
 function onTagClick(tag: string) {
-  activeTag.value = activeTag.value === tag ? '' : tag
+  activeTag.value = activeTag.value === tag ? ALL_TAG : tag
 }
 </script>
 

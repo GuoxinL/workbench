@@ -16,12 +16,20 @@ const MIN = 12
 const MAX = 28
 
 const styled = computed(() =>
-  props.tags.map((t) => ({
-    ...t,
-    color: hex(t.tag),
-    size: MIN + Math.round(((t.count - 1) / (maxCount.value - 1 || 1)) * (MAX - MIN)),
-    active: t.tag === props.active,
-  })).sort((a, b) => a.tag.localeCompare(b.tag))
+  props.tags.map((t) => {
+    const isAll = t.tag === '__all__'
+    return {
+      ...t,
+      color: isAll ? '#64748b' : hex(t.tag),
+      label: isAll ? `全部(${t.count})` : t.tag,
+      size: Math.max(MIN, isAll ? MIN : MIN + Math.round(((t.count - 1) / (maxCount.value - 1 || 1)) * (MAX - MIN))),
+      active: t.tag === props.active,
+    }
+  }).sort((a, b) => {
+    if (a.tag === '__all__') return -1
+    if (b.tag === '__all__') return 1
+    return a.tag.localeCompare(b.tag)
+  })
 )
 </script>
 
@@ -35,7 +43,7 @@ const styled = computed(() =>
       :class="{ on: t.active }"
       :style="{ fontSize: t.size + 'px', color: t.active ? '#fff' : t.color, background: t.active ? t.color : 'transparent' }"
       @click="emit('select', t.tag)"
-    >{{ t.tag }}</span>
+    >{{ t.label }}</span>
   </div>
 </template>
 
