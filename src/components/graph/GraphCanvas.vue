@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, shallowRef } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, shallowRef } from 'vue'
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation } from 'd3-force'
 import { useRouter } from 'vue-router'
 import { useDataStore } from '@/stores/data'
@@ -138,21 +138,17 @@ function layout() {
 }
 
 function toggleTag(tag: string) {
-  try {
-    if (expanded.value.includes(tag)) {
-      expanded.value = expanded.value.filter((t) => t !== tag)
-    } else {
-      expanded.value = [...expanded.value, tag]
-    }
-    layout()
-  } catch (e) {
-    console.warn('[graph] toggleTag error', e)
+  if (expanded.value.includes(tag)) {
+    expanded.value = expanded.value.filter((t) => t !== tag)
+  } else {
+    expanded.value = [...expanded.value, tag]
   }
+  nextTick(layout)
 }
 
 function collapseAll() {
   expanded.value = []
-  layout()
+  nextTick(layout)
 }
 
 function openNode(id: string) {
