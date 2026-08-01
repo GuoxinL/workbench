@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDataStore } from '@/stores/data'
 import ArticleList from '@/components/kb/ArticleList.vue'
+import ArticleGrid from '@/components/kb/ArticleGrid.vue'
 import ArticleEditor from '@/components/kb/ArticleEditor.vue'
 
 const store = useDataStore()
@@ -16,7 +17,7 @@ const selected = computed(() => (selectedId.value ? store.articleById(selectedId
 watch(
   () => route.params.id,
   (id) => {
-    if (id) selectedId.value = id as string
+    selectedId.value = (id as string) || ''
   },
 )
 
@@ -36,9 +37,12 @@ function onCreate() {
 </script>
 
 <template>
-  <section class="view">
-    <ArticleList :selected="selectedId" @select="onSelect" @create="onCreate" />
-    <ArticleEditor ref="editorRef" :article="selected" @open="onSelect" />
+  <section class="view" :class="{ grid: !selected }">
+    <ArticleGrid v-if="!selected" @select="onSelect" @create="onCreate" />
+    <template v-else>
+      <ArticleList :selected="selectedId" @select="onSelect" @create="onCreate" />
+      <ArticleEditor ref="editorRef" :article="selected" @open="onSelect" />
+    </template>
   </section>
 </template>
 
@@ -46,5 +50,8 @@ function onCreate() {
 .view {
   display: flex;
   height: calc(100vh - 110px);
+}
+.view.grid {
+  display: block;
 }
 </style>

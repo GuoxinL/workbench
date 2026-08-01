@@ -12,6 +12,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     ArticleEditor: typeof import('./components/kb/ArticleEditor.vue')['default']
+    ArticleGrid: typeof import('./components/kb/ArticleGrid.vue')['default']
     ArticleList: typeof import('./components/kb/ArticleList.vue')['default']
     ColorSelect: typeof import('./components/todos/ColorSelect.vue')['default']
     ElButton: typeof import('element-plus/es')['ElButton']
