@@ -187,7 +187,11 @@ function onWheel(e: WheelEvent) {
   transform.k = newK
 }
 
-onMounted(layout)
+onMounted(() => {
+  layout()
+  ;(window as any).__graphToggle = toggleTag
+  ;(window as any).__graphCollapse = collapseAll
+})
 </script>
 
 <template>
