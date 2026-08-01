@@ -42,7 +42,10 @@ function scanConvertWikilinks(view: EditorView) {
   ranges.sort((a, b) => b.from - a.from)
   for (const r of ranges) {
     const mark = view.state.schema.marks.wikilink?.create({ title: r.title, slug: slug(r.title) })
-    if (mark) tr.replaceWith(r.from, r.to, view.state.schema.text(r.alias, [mark]))
+    if (mark) {
+      tr.replaceWith(r.from, r.to, view.state.schema.text(r.alias, [mark]))
+      ;(window as any).__wlDebug = { title: r.title, slug: slug(r.title), attrs: { ...mark.attrs } }
+    }
   }
   view.dispatch(tr)
 }
