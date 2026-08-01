@@ -136,12 +136,16 @@ function layout() {
 }
 
 function toggleTag(tag: string) {
-  if (expanded.value.includes(tag)) {
-    expanded.value = expanded.value.filter((t) => t !== tag)
-  } else {
-    expanded.value = [...expanded.value, tag]
+  try {
+    if (expanded.value.includes(tag)) {
+      expanded.value = expanded.value.filter((t) => t !== tag)
+    } else {
+      expanded.value = [...expanded.value, tag]
+    }
+    layout()
+  } catch (e) {
+    console.warn('[graph] toggleTag error', e)
   }
-  layout()
 }
 
 function collapseAll() {
@@ -188,9 +192,9 @@ function onWheel(e: WheelEvent) {
 }
 
 onMounted(() => {
-  layout()
-  ;(window as any).__graphToggle = toggleTag
-  ;(window as any).__graphCollapse = collapseAll
+  try { layout() } catch (e) { console.warn('[graph] onMounted layout error', e) }
+  ;(window as any).__graphToggle = (tag: string) => { try { toggleTag(tag) } catch (e) { console.warn('[graph] toggle error', e) } }
+  ;(window as any).__graphCollapse = () => { try { collapseAll() } catch (e) { console.warn('[graph] collapse error', e) } }
 })
 </script>
 
