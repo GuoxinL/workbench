@@ -277,6 +277,7 @@ const fromTodoTitle = computed(() => {
 
       <MilkdownEditor
         v-if="draftContent !== undefined"
+        :key="article?.id"
         :model-value="draftContent"
         @update:model-value="onContentChange"
       />
