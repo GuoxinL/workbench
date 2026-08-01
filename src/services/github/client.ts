@@ -64,6 +64,10 @@ export async function githubRequest(
       headers,
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       signal: controller.signal,
+      // 关键：禁用 HTTP 缓存。同步用 blob sha 做乐观锁，若 GET（如冲突重试时的
+      // 重新拉取、pushRemote 的 422 恢复 GET）命中缓存返回陈旧 sha，
+      // 后续 PUT 会 409「sha 不匹配」→ 同步失败且无法自愈（孤儿文件越积越多）。
+      cache: 'no-store',
     })
     let data: any = null
     if (res.status !== 204) {

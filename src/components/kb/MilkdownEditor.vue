@@ -44,7 +44,6 @@ function scanConvertWikilinks(view: EditorView) {
     const mark = view.state.schema.marks.wikilink?.create({ title: r.title, slug: slug(r.title) })
     if (mark) {
       tr.replaceWith(r.from, r.to, view.state.schema.text(r.alias, [mark]))
-      ;(window as any).__wlDebug = { title: r.title, slug: slug(r.title), attrs: { ...mark.attrs } }
     }
   }
   view.dispatch(tr)
@@ -91,11 +90,6 @@ const MilkdownCore = defineComponent({
         scanning = false
       })
     })
-    ;(window as any).__milkdownEditor = getEditor
-    waitEditor((ed) => {
-      ed.action((ctx: any) => { (window as any).__milkdownView = ctx.get(editorViewCtx) })
-    }, 600)
-
     return () => h(Milkdown)
   },
 })
