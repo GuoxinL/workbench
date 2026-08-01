@@ -5,7 +5,7 @@ import { gfm } from '@milkdown/kit/preset/gfm'
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener'
 import { nord } from '@milkdown/theme-nord'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/vue'
-import { wikilinkSchema, wikilinkInputRule } from '@/lib/markdown/milkdown-wikilink'
+import { wikilinkSchema, wikilinkInputRule, wikilinkRemark } from '@/lib/markdown/milkdown-wikilink'
 import { defineComponent, h } from 'vue'
 
 // 内层组件（必须在 MilkdownProvider 内，才能调 useEditor）
@@ -27,6 +27,7 @@ const MilkdownCore = defineComponent({
         .use(commonmark)
         .use(gfm)
         .use(wikilinkSchema)
+        .use(wikilinkRemark)
         .use(wikilinkInputRule)
         .use(listener),
     )

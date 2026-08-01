@@ -68,6 +68,10 @@ a.wikilink:hover {
 a.wikilink[href="#"] {
   pointer-events: auto;
 }
+a.wikilink.missing {
+  color: #ef4444;
+  border-bottom-color: #ef4444;
+}
 
 /* Milkdown 编辑器全局微调 */
 .milkdown {

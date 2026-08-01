@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { watchDebounced } from '@vueuse/core'
 import type { Article } from '@/types'
 import { useDataStore } from '@/stores/data'
 import { useAutoSave } from '@/composables/useAutoSave'
@@ -77,6 +78,19 @@ function onWikilinkClick(e: MouseEvent) {
     }
   }
 }
+
+/** 扫描 Milkdown 中的 wikilink，标记缺失目标为红色 */
+function refreshMissingLinks() {
+  requestAnimationFrame(() => {
+    document.querySelectorAll('.milkdown .wikilink').forEach((el) => {
+      const s = el.getAttribute('data-slug')
+      const existed = s ? store.articles.some((n) => !n.deleted && slug(n.title) === s) : false
+      el.classList.toggle('missing', !existed)
+    })
+  })
+}
+watchDebounced(() => store.articles, refreshMissingLinks, { debounce: 300 })
+onMounted(refreshMissingLinks)
 
 // 大纲跳转：向编辑区内的 Milkdown 发送滚动事件
 function onJumpToHeading(id: string) {
