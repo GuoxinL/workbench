@@ -8,9 +8,14 @@ import { nord } from '@milkdown/theme-nord'
 import { Milkdown, MilkdownProvider, useEditor, useInstance } from '@milkdown/vue'
 import { wikilinkSchema, wikilinkInputRule, wikilinkRemark } from '@/lib/markdown/milkdown-wikilink'
 import { pasteImagePlugin } from '@/lib/markdown/paste-image'
+import { codeMirror } from '@milkdown/crepe/feature/code-mirror'
+import { toolbar } from '@milkdown/crepe/feature/toolbar'
+import { table } from '@milkdown/crepe/feature/table'
+import { imageBlock } from '@milkdown/crepe/feature/image-block'
+import { placeholder } from '@milkdown/crepe/feature/placeholder'
 import { defineComponent, h, watch } from 'vue'
 
-// 内层组件（必须在 MilkdownProvider 内，才能调 useEditor）
+// 内层组件
 const MilkdownCore = defineComponent({
   name: 'MilkdownCore',
   props: { modelValue: String },
@@ -37,7 +42,23 @@ const MilkdownCore = defineComponent({
 
     const [, getEditor] = useInstance() as any
 
-    // 外部 modelValue 变化时替换编辑器内容
+    // 编辑器就绪后应用 Crepe 功能
+    watch(
+      () => getEditor(),
+      (ed) => {
+        if (!ed) return
+        // 延迟确保 DOM 就绪
+        setTimeout(() => {
+          codeMirror(ed)
+          toolbar(ed)
+          table(ed)
+          imageBlock(ed)
+          placeholder(ed)
+        }, 100)
+      },
+      { immediate: true },
+    )
+
     watch(
       () => props.modelValue,
       (val) => {
@@ -50,10 +71,7 @@ const MilkdownCore = defineComponent({
       },
     )
 
-    // 暴露编辑器引用到 window，供右键菜单等直接插入
     ;(window as any).__milkdownEditor = getEditor
-
-    // 延迟暴露 editorView 供 ArticleEditor 直接插入文本
     setTimeout(() => {
       const ed = getEditor()
       if (ed) {
@@ -67,27 +85,18 @@ const MilkdownCore = defineComponent({
   },
 })
 
-// 外层组件（提供 MilkdownProvider 上下文）
 export default defineComponent({
   name: 'MilkdownEditor',
   props: { modelValue: { type: String, default: '' } },
   emits: ['update:modelValue'],
   setup(props, { emit }) {
     return () =>
-      h(
-        MilkdownProvider,
-        {},
-        () =>
-          h(MilkdownCore, {
-            modelValue: props.modelValue,
-            'onUpdate:modelValue': (v: string) => emit('update:modelValue', v),
-          }),
+      h(MilkdownProvider, {}, () =>
+        h(MilkdownCore, {
+          modelValue: props.modelValue,
+          'onUpdate:modelValue': (v: string) => emit('update:modelValue', v),
+        }),
       )
   },
 })
 </script>
-
-<style scoped>
-/* 每个 Milkdown 实例挂载在 provider 内部的 .milkdown DOM 上
-   全局样式在 base.css 中补充 */
-</style>
