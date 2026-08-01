@@ -24,7 +24,6 @@ window.addEventListener('beforeunload', () => {
         <router-link :to="{ name: 'todos' }" :class="{ on: active === 'todos' }">TODO</router-link>
         <router-link :to="{ name: 'articles' }" :class="{ on: active === 'articles' }">知识库</router-link>
         <router-link :to="{ name: 'graph' }" :class="{ on: active === 'graph' }">图谱</router-link>
-        <router-link :to="{ name: 'tags' }" :class="{ on: active === 'tags' }">标签</router-link>
       </nav>
       <div class="right">
         <SyncChip />
