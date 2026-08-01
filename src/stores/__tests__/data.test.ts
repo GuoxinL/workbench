@@ -123,4 +123,45 @@ describe('data store —— 待办 / 知识库文章', () => {
     expect(s.articles.length).toBe(0)
     expect(s.todos.length).toBe(0)
   })
+
+  it('loadData 清理全部墓碑待办', () => {
+    const s1 = useDataStore()
+    const t1 = s1.addTodo({ title: '待办A' })
+    const t2 = s1.addTodo({ title: '待办B' })
+    s1.removeTodo(t1.id)
+    s1.removeTodo(t2.id)
+    const raw = JSON.parse(localStorage.getItem('wb.data.v1') || '{}')
+    const deletedCount = raw.todos.filter((x: any) => x.deleted).length
+    expect(deletedCount).toBeGreaterThanOrEqual(2)
+
+    setActivePinia(createPinia())
+    const s2 = useDataStore()
+    expect(s2.todos.filter((t) => !t.deleted).length).toBe(0)
+  })
+
+  it('loadData 待办墓碑 + 存活待办混合时不清理', () => {
+    const s1 = useDataStore()
+    const del = s1.addTodo({ title: '删除我' })
+    s1.addTodo({ title: '保留我' })
+    s1.removeTodo(del.id) // 仅删除「删除我」
+    setActivePinia(createPinia())
+    const s2 = useDataStore()
+    const live = s2.todos.filter((t) => !t.deleted)
+    expect(live.length).toBe(1)
+    expect(live[0].title).toBe('保留我')
+    const tombstones = s2.todos.filter((t) => t.deleted)
+    expect(tombstones.length).toBe(1)
+  })
+
+  it('loadData 文章 + 待办同时全墓碑 → 两者均清除', () => {
+    const s1 = useDataStore()
+    const a = s1.addArticle('删除文章')
+    const t = s1.addTodo({ title: '删除待办' })
+    s1.removeArticle(a.id)
+    s1.removeTodo(t.id)
+    setActivePinia(createPinia())
+    const s2 = useDataStore()
+    expect(s2.articles.filter((n) => !n.deleted).length).toBe(0)
+    expect(s2.todos.filter((tx) => !tx.deleted).length).toBe(0)
+  })
 })

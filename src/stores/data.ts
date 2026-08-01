@@ -42,10 +42,13 @@ function loadData(): WorkbenchData {
       const d = JSON.parse(raw) as WorkbenchData
       if (d && Array.isArray(d.todos) && Array.isArray(d.articles)) {
         const migrated = migrateData(d)
-        // 防止历史残留：当所有文章均为墓碑时（无存活文章），清除以触发播种恢复
-        // 正常情况（有存活文章 + 有墓碑）则保留墓碑供同步引擎做远端删除传播
+        // 防止历史残留：当所有文章/待办均为墓碑时，清除以触发播种恢复
+        // 正常情况（有存活 + 有墓碑）则保留墓碑供同步引擎做远端删除传播
         if (migrated.articles.length > 0 && !migrated.articles.some((a) => !a.deleted)) {
           migrated.articles = []
+        }
+        if (migrated.todos.length > 0 && !migrated.todos.some((t) => !t.deleted)) {
+          migrated.todos = []
         }
         return migrated
       }
