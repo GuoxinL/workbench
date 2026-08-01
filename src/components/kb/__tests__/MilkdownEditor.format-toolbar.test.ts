@@ -81,6 +81,60 @@ describe('MilkdownEditor 常驻格式工具栏命令', () => {
     })
     expect(hasBullet).toBe(true)
 
+    // 4) 斜体：点击「斜体」对选中文本加 emphasis 标记
+    resetDoc(view, '另一段测试文本。')
+    await new Promise((r) => setTimeout(r, 30))
+    {
+      const d = view.state.doc
+      let f = 1
+      let t = 1
+      d.descendants((n: any, pos: number) => {
+        if (n.isText && f === 1) {
+          f = pos
+          t = pos + n.text.length
+        }
+      })
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(d, f, t)))
+      findBtn(toolbar!, '斜体').click()
+      await new Promise((r) => setTimeout(r, 50))
+      expect(view.state.doc.rangeHasMark(f, t, view.state.schema.marks.emphasis)).toBe(true)
+    }
+
+    // 5) 行内代码：点击「行内代码」对选中文本加 inlineCode 标记
+    resetDoc(view, '代码片段 inline。')
+    await new Promise((r) => setTimeout(r, 30))
+    {
+      const d = view.state.doc
+      let f = 1
+      let t = 1
+      d.descendants((n: any, pos: number) => {
+        if (n.isText && f === 1) {
+          f = pos
+          t = pos + n.text.length
+        }
+      })
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(d, f, t)))
+      findBtn(toolbar!, '行内代码').click()
+      await new Promise((r) => setTimeout(r, 50))
+      expect(view.state.doc.rangeHasMark(f, t, view.state.schema.marks.inlineCode)).toBe(true)
+    }
+
+    // 6) 分割线：点击「分割线」在文档中插入 hr 节点
+    resetDoc(view, '一段文字。')
+    await new Promise((r) => setTimeout(r, 30))
+    {
+      const len = view.state.doc.firstChild.textContent.length
+      const pos = 1 + len // 段落末尾光标
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)))
+      findBtn(toolbar!, '分割线').click()
+      await new Promise((r) => setTimeout(r, 50))
+      let hasHr = false
+      view.state.doc.descendants((n: any) => {
+        if (n.type.name === 'hr') hasHr = true
+      })
+      expect(hasHr).toBe(true)
+    }
+
     wrapper.unmount()
   }, 30000)
 })

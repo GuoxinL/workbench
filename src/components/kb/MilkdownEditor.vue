@@ -226,7 +226,7 @@ const MilkdownCore = defineComponent({
     const insertHr = () => {
       const view = getLiveView()
       if (!view) return
-      const hr = view.state.schema.nodes.horizontal_rule
+      const hr = view.state.schema.nodes.hr
       if (!hr) return
       view.dispatch(view.state.tr.replaceSelectionWith(hr.create()))
       view.focus()
@@ -268,7 +268,7 @@ const MilkdownCore = defineComponent({
       switch (type) {
         case 'bold': return toggleMarkByName('strong')
         case 'italic': return toggleMarkByName('emphasis')
-        case 'code': return toggleMarkByName('code')
+        case 'code': return toggleMarkByName('inlineCode')
         case 'h1': return toggleHeading(1)
         case 'h2': return toggleHeading(2)
         case 'h3': return toggleHeading(3)
@@ -321,7 +321,9 @@ const MilkdownCore = defineComponent({
                 onMousedown: (e: any) => e.preventDefault(),
                 onClick: () => cmd(b.t),
               } as any,
-              b.icon ? [h(b.icon), b.label ? ' ' + b.label : ''] : renderLabel(b),
+              b.icon
+                ? () => [h(b.icon), b.label ? ' ' + b.label : '']
+                : () => renderLabel(b),
             ),
       )
     }
