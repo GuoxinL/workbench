@@ -21,9 +21,9 @@ export function indexFromArticles(articles: Article[]): Record<string, ManifestE
 }
 
 export interface ManifestDiff {
-  /** 需从远端拉取的 slug（远端更新或本地缺失） */
+  /** 需从远端拉取的 id（远端更新或本地缺失） */
   pull: string[]
-  /** 需推送到远端的 slug（本地更新或远端缺失） */
+  /** 需推送到远端的 id（本地更新或远端缺失） */
   push: string[]
 }
 
@@ -33,15 +33,15 @@ export interface ManifestDiff {
 export function diffManifests(local: Manifest, remote: Manifest): ManifestDiff {
   const pull: string[] = []
   const push: string[] = []
-  const slugs = new Set([...Object.keys(local.articles), ...Object.keys(remote.articles)])
-  for (const s of slugs) {
-    const l = local.articles[s]
-    const r = remote.articles[s]
-    if (!l && r) pull.push(s)
-    else if (l && !r) push.push(s)
+  const ids = new Set([...Object.keys(local.articles), ...Object.keys(remote.articles)])
+  for (const id of ids) {
+    const l = local.articles[id]
+    const r = remote.articles[id]
+    if (!l && r) pull.push(id)
+    else if (l && !r) push.push(id)
     else if (l && r) {
-      if (r.updatedAt > l.updatedAt) pull.push(s)
-      else if (l.updatedAt > r.updatedAt) push.push(s)
+      if (r.updatedAt > l.updatedAt) pull.push(id)
+      else if (l.updatedAt > r.updatedAt) push.push(id)
     }
   }
   return { pull, push }
