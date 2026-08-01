@@ -93,10 +93,18 @@ watchDebounced(() => store.articles, refreshMissingLinks, { debounce: 300 })
 onMounted(refreshMissingLinks)
 
 // 大纲跳转：向编辑区内的 Milkdown 发送滚动事件
+/** 大纲跳转：在 Milkdown 编辑区滚动到匹配的标题 */
 function onJumpToHeading(id: string) {
-  const el = document.querySelector(`#${CSS.escape(id)}, [data-heading="${CSS.escape(id)}"]`)
-    || document.querySelector('.milkdown [id]')  // 兼容无 ID 的备选
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const container = document.querySelector('.milkdown')
+  if (!container) return
+  const headings = container.querySelectorAll('h1, h2, h3, h4')
+  for (const h of headings) {
+    const text = (h.textContent || '').trim()
+    if (text.toLowerCase().replace(/\s+/g, '-') === id) {
+      h.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      break
+    }
+  }
 }
 
 // 标签
