@@ -3,10 +3,11 @@ import { Editor, rootCtx, defaultValueCtx } from '@milkdown/kit/core'
 import { commonmark } from '@milkdown/kit/preset/commonmark'
 import { gfm } from '@milkdown/kit/preset/gfm'
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener'
+import { replaceAll, getMarkdown } from '@milkdown/kit/utils'
 import { nord } from '@milkdown/theme-nord'
-import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/vue'
+import { Milkdown, MilkdownProvider, useEditor, useInstance } from '@milkdown/vue'
 import { wikilinkSchema, wikilinkInputRule, wikilinkRemark } from '@/lib/markdown/milkdown-wikilink'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, watch } from 'vue'
 
 // 内层组件（必须在 MilkdownProvider 内，才能调 useEditor）
 const MilkdownCore = defineComponent({
@@ -31,6 +32,22 @@ const MilkdownCore = defineComponent({
         .use(wikilinkInputRule)
         .use(listener),
     )
+
+    const [, getEditor] = useInstance() as any
+
+    // 外部 modelValue 变化时替换编辑器内容
+    watch(
+      () => props.modelValue,
+      (val) => {
+        const ed = getEditor()
+        if (!ed) return
+        const current = ed.action(getMarkdown())
+        if (current !== (val ?? '')) {
+          ed.action(replaceAll(val ?? ''))
+        }
+      },
+    )
+
     return () => h(Milkdown)
   },
 })
