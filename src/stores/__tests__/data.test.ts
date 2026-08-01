@@ -102,7 +102,7 @@ describe('data store —— 待办 / 知识库文章', () => {
 
   it('loadData 墓碑 + 存活混合时不清理（保留墓碑供同步引擎）', () => {
     const s1 = useDataStore()
-    const a1 = s1.addArticle('存活')
+    s1.addArticle('存活')
     const a2 = s1.addArticle('删除')
     s1.removeArticle(a2.id) // 仅删除 a2
     // 重载
