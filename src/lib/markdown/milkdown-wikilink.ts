@@ -10,22 +10,9 @@ import { $markAttr, $markSchema, $inputRule, $remark } from '@milkdown/utils'
 import { InputRule } from 'prosemirror-inputrules'
 import type { Root } from 'mdast'
 import { visit } from 'unist-util-visit'
+import { slug } from '@/lib/slug'
 
 const TAG = '[wikilink]'
-
-/** 标题归一化，空串或全空白返回占位 'untitled' 避免下游异常 */
-function slug(s: unknown): string {
-  if (typeof s !== 'string') {
-    console.warn(`${TAG} slug() received non-string:`, typeof s, s)
-    return 'untitled'
-  }
-  const trimmed = s.trim()
-  if (!trimmed) {
-    console.warn(`${TAG} slug() received empty/whitespace-only title`)
-    return 'untitled'
-  }
-  return trimmed.toLowerCase().replace(/\s+/g, ' ')
-}
 
 /** 从 wiki:// 协议 URL 提取原始标题；解码失败则返回占位 */
 function parseWikiUrl(url: string): string {

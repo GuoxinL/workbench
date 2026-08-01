@@ -7,6 +7,7 @@ import { $prose } from '@milkdown/kit/utils'
 import { nord } from '@milkdown/theme-nord'
 import { Milkdown, MilkdownProvider, useEditor, useInstance } from '@milkdown/vue'
 import { wikilinkSchema, wikilinkInputRule, wikilinkRemark } from '@/lib/markdown/milkdown-wikilink'
+import { scanConvertWikilinks } from '@/lib/markdown/scan-wikilinks'
 import { pasteImagePlugin } from '@/lib/markdown/paste-image'
 import { codeMirror } from '@milkdown/crepe/feature/code-mirror'
 import { toolbar } from '@milkdown/crepe/feature/toolbar'
@@ -16,45 +17,14 @@ import { placeholder } from '@milkdown/crepe/feature/placeholder'
 import { defineComponent, h } from 'vue'
 import type { EditorView } from '@milkdown/prose/view'
 
-function slug(s: string) { return s.trim().toLowerCase().replace(/\s+/g, ' ') }
-
-/** 扫描 ProseMirror 文档，把 [[标题|别名]] 文本转为 wikilink mark */
-function scanConvertWikilinks(view: EditorView) {
-  const ranges: { from: number; to: number; title: string; alias: string }[] = []
-  view.state.doc.descendants((node, pos) => {
-    if (!node.isText) return
-    const text = node.text || ''
-    const re = /\[\[([^\|\]]+)(?:\|([^\]]+))?\]\]/g
-    let m: RegExpExecArray | null
-    while ((m = re.exec(text)) !== null) {
-      const t = (m[1] ?? '').trim()
-      if (!t) continue
-      ranges.push({
-        from: pos + m.index,
-        to: pos + m.index + m[0].length,
-        title: t,
-        alias: (m[2] ?? t).trim() || t,
-      })
-    }
-  })
-  if (ranges.length === 0) return
-  const tr = view.state.tr
-  ranges.sort((a, b) => b.from - a.from)
-  for (const r of ranges) {
-    const mark = view.state.schema.marks.wikilink?.create({ title: r.title, slug: slug(r.title) })
-    if (mark) {
-      tr.replaceWith(r.from, r.to, view.state.schema.text(r.alias, [mark]))
-    }
-  }
-  view.dispatch(tr)
-}
-
 const MilkdownCore = defineComponent({
   name: 'MilkdownCore',
   props: { modelValue: String },
-  emits: ['update:modelValue'],
+    emits: ['update:modelValue', 'ready'],
   setup(props, { emit }) {
     let scanning = false
+    // 编辑器渲染完成后通知父组件重跑双链缺失标记等后处理
+    const onReady = () => emit('ready')
 
     useEditor((root) =>
       Editor.make()
@@ -90,6 +60,7 @@ const MilkdownCore = defineComponent({
         scanning = true
         scanConvertWikilinks(view)
         scanning = false
+        onReady()
       })
     })
     return () => h(Milkdown)
@@ -99,12 +70,13 @@ const MilkdownCore = defineComponent({
 export default defineComponent({
   name: 'MilkdownEditor',
   props: { modelValue: { type: String, default: '' } },
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'ready'],
   setup(props, { emit }) {
     return () => h(MilkdownProvider, {}, () =>
       h(MilkdownCore, {
         modelValue: props.modelValue,
         'onUpdate:modelValue': (v: string) => emit('update:modelValue', v),
+        onReady: () => emit('ready'),
       }),
     )
   },

@@ -9,6 +9,8 @@ import { fileURLToPath, URL } from 'node:url'
 export default defineConfig({
   // GitHub Pages 子路径安全：产物用相对路径
   base: './',
+  // 测试时让 element-plus 走 vite 转换（含其 CSS 导入），避免被 external 给 Node 直接加载 .css 报错
+  ssr: { noExternal: ['element-plus'] },
   plugins: [
     vue(),
     AutoImport({
@@ -29,6 +31,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    css: true,
     include: ['src/**/*.{test,spec}.ts', 'proxy/**/*.{test,spec}.{ts,js}'],
   },
 })
