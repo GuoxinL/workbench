@@ -78,10 +78,10 @@ function layout() {
   // 展开的文章节点
   for (const b of bubbles) {
     if (!expanded.value.has(b.tag)) continue
-    const allArts = store.articles
+    const allArts = store.articles.filter((a) => !a.deleted)
     for (const aid of b.ids) {
       const a = allArts.find((x) => x.id === aid)
-      if (!a || a.deleted) continue
+      if (!a || a.deleted) { console.warn('[graph] article not found for:', aid, b.tag); continue }
       ns.push({
         id: a.id,
         title: a.title,
