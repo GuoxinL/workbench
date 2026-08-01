@@ -53,8 +53,8 @@ const tagBubbles = computed<TagBubble[]>(() => {
     .sort((a, b) => b.ids.length - a.ids.length)
 })
 
-const expanded = ref<string[]>([])
-function isExpanded(id: string) { return expanded.value.includes(id) }
+const graphState = reactive({ expandedTags: [] as string[] })
+function isExpanded(id: string) { return graphState.expandedTags.includes(id) }
 
 function layout() {
   const ns: GNode[] = []
@@ -77,7 +77,7 @@ function layout() {
 
   // 展开的文章节点
   for (const b of bubbles) {
-    if (!expanded.value.includes(b.tag)) continue
+    if (!graphState.expandedTags.includes(b.tag)) continue
     const allArts = store.articles.filter((a) => !a.deleted)
     for (const aid of b.ids) {
       const a = allArts.find((x) => x.id === aid)
@@ -96,7 +96,7 @@ function layout() {
   // 展开文章之间的引用连线
   const artSet = new Set(store.articles.filter((a) => !a.deleted).map((a) => a.id))
   for (const b of bubbles) {
-    if (!expanded.value.includes(b.tag)) continue
+    if (!graphState.expandedTags.includes(b.tag)) continue
     for (const aid of b.ids) {
       const a = store.articles.find((x) => x.id === aid)
       if (!a || a.deleted) continue
@@ -131,24 +131,25 @@ function layout() {
   ;(window as any).__graphDebug = {
     nodesFinal: ns.length,
     linksFinal: ls.length,
-    expanded: [...expanded.value],
+    expanded: [...graphState.expandedTags],
     bubbleTags: bubbles.map(b => ({ tag: b.tag, ids: b.ids })),
     nonDeletedArts: store.articles.filter(a => !a.deleted).map(a => ({id:a.id,title:a.title})),
   }
 }
 
 function toggleTag(tag: string) {
-  if (expanded.value.includes(tag)) {
-    expanded.value = expanded.value.filter((t) => t !== tag)
+  if (graphState.expandedTags.includes(tag)) {
+    const idx = graphState.expandedTags.indexOf(tag)
+    if (idx >= 0) graphState.expandedTags.splice(idx, 1)
   } else {
-    expanded.value = [...expanded.value, tag]
+    graphState.expandedTags.push(tag)
   }
-  nextTick(layout)
+  layout()
 }
 
 function collapseAll() {
-  expanded.value = []
-  nextTick(layout)
+  graphState.expandedTags.length = 0
+  layout()
 }
 
 function openNode(id: string) {
@@ -201,7 +202,7 @@ onMounted(() => {
     <div class="graph-toolbar">
       <button class="btn" @click="collapseAll">收起全部</button>
       <button class="btn" @click="layout">重新布局</button>
-      <span v-if="expanded.length" class="muted">已展开 {{ expanded.length }} 个标签</span>
+      <span v-if="graphState.expandedTags.length" class="muted">已展开 {{ graphState.expandedTags.length }} 个标签</span>
       <span v-else class="muted">点击气泡展开</span>
     </div>
     <p v-if="!hasNodes" class="empty muted">还没有文章，添加标签后即可查看</p>
