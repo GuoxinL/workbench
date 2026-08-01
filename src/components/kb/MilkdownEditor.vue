@@ -17,6 +17,12 @@ import { imageBlock } from '@milkdown/crepe/feature/image-block'
 import { placeholder } from '@milkdown/crepe/feature/placeholder'
 import { defineComponent, h, ref } from 'vue'
 import type { EditorView } from '@milkdown/prose/view'
+// 项目用 unplugin 自动按需导入 Element Plus 组件（仅作用于模板标签），
+// 运行时 h() 调用需显式导入组件，故在此直接 import ElButton。
+import { ElButton } from 'element-plus'
+// 图标取自 Element Plus 官方图标库（element-plus 的配套依赖，随装随有）。
+// 加粗/斜体/行内代码/标题/有序列表无合适图标，用文字 + 语义样式呈现。
+import { List, Document, Link, Picture, ChatLineSquare, Minus } from '@element-plus/icons-vue'
 
 const MilkdownCore = defineComponent({
   name: 'MilkdownCore',
@@ -276,31 +282,39 @@ const MilkdownCore = defineComponent({
       }
     }
     const toolbarButtons = () => {
-      const defs: ({ t: string; label: string; title: string } | { sep: true })[] = [
-        { t: 'bold', label: 'B', title: '加粗 (Ctrl+B)' },
-        { t: 'italic', label: 'I', title: '斜体 (Ctrl+I)' },
-        { t: 'code', label: '</>', title: '行内代码' },
+      type BtnDef =
+        | { t: string; title: string; label?: string; icon?: any; styled?: 'b' | 'i' }
+        | { sep: true }
+      const defs: BtnDef[] = [
+        { t: 'bold', title: '加粗 (Ctrl+B)', label: 'B', styled: 'b' },
+        { t: 'italic', title: '斜体 (Ctrl+I)', label: 'I', styled: 'i' },
+        { t: 'code', title: '行内代码', label: '</>' },
         { sep: true },
-        { t: 'h1', label: 'H1', title: '标题 1' },
-        { t: 'h2', label: 'H2', title: '标题 2' },
-        { t: 'h3', label: 'H3', title: '标题 3' },
+        { t: 'h1', title: '标题 1', label: 'H1' },
+        { t: 'h2', title: '标题 2', label: 'H2' },
+        { t: 'h3', title: '标题 3', label: 'H3' },
         { sep: true },
-        { t: 'ul', label: '• 列表', title: '无序列表' },
-        { t: 'ol', label: '1. 列表', title: '有序列表' },
-        { t: 'quote', label: '❝ 引用', title: '引用块' },
-        { t: 'codeblock', label: '</> 代码块', title: '代码块' },
+        { t: 'ul', title: '无序列表', icon: List },
+        { t: 'ol', title: '有序列表', label: '1.' },
+        { t: 'quote', title: '引用块', icon: ChatLineSquare },
+        { t: 'codeblock', title: '代码块', icon: Document },
         { sep: true },
-        { t: 'link', label: '🔗 链接', title: '插入链接' },
-        { t: 'image', label: '🖼 图片', title: '插入图片' },
-        { t: 'hr', label: '― 分割线', title: '分割线' },
+        { t: 'link', title: '插入链接', icon: Link },
+        { t: 'image', title: '插入图片', icon: Picture },
+        { t: 'hr', title: '分割线', icon: Minus },
       ]
+      const renderLabel = (b: Extract<BtnDef, { t: string }>) => {
+        if (b.styled === 'b') return h('b', b.label)
+        if (b.styled === 'i') return h('i', b.label)
+        return b.label as string
+      }
       return defs.map((b) =>
         'sep' in b
           ? h('span', { class: 'tb-sep' })
           : h(
-              'button',
-              { class: 'tb-btn', type: 'button', title: b.title, onClick: () => cmd(b.t) },
-              b.label,
+              ElButton,
+              { class: 'tb-btn', size: 'small', title: b.title, onClick: () => cmd(b.t) } as any,
+              b.icon ? [h(b.icon), b.label ? ' ' + b.label : ''] : renderLabel(b),
             ),
       )
     }
@@ -340,6 +354,7 @@ export default defineComponent({
 .md-toolbar {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
   padding: 6px 8px;
   border: 1px solid var(--line);
@@ -347,28 +362,13 @@ export default defineComponent({
   background: #fff;
   margin-bottom: 10px;
 }
-.tb-btn {
-  min-width: 30px;
-  height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #fff;
-  color: var(--fg);
-  cursor: pointer;
-  font-size: 13px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  white-space: nowrap;
+/* 复用 Element Plus 按钮外观，仅做间距统一（去掉相邻按钮的默认外边距） */
+.md-toolbar :deep(.el-button) {
+  margin: 0;
 }
-.tb-btn:hover {
-  background: #f1f5f9;
-  border-color: #94a3b8;
-}
-.tb-btn:active {
-  background: #e2e8f0;
+.md-toolbar :deep(.el-button .el-icon),
+.md-toolbar :deep(.el-button svg) {
+  vertical-align: middle;
 }
 .tb-sep {
   width: 1px;
