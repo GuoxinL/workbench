@@ -83,9 +83,16 @@ export const wikilinkSchema = $markSchema('wikilink', () => ({
   },
   toMarkdown: {
     match: (mark) => mark.type.name === 'wikilink',
-    runner: (state, mark) => {
+    // 关键：必须返回 truthy（state.addNode 返回 state 本身），否则序列化器会
+    // 在 `[[title]]` 之后再把节点原始文本（别名）重复输出一遍，导致内容被
+    // 污染（如 `[[标题]]别名别名`）。node.text 即编辑器中的展示别名，
+    // 据此还原 `[[title|alias]]`，保证保存/重载后别名不丢。
+    runner: (state, mark, node) => {
       const title = (mark.attrs.title as string) || 'untitled'
-      state.addNode('text', undefined, `[[${title}]]`)
+      const alias = (node && node.isText ? (node as any).text : '') || title
+      const serialized = alias && alias !== title ? `[[${title}|${alias}]]` : `[[${title}]]`
+      state.addNode('text', undefined, serialized)
+      return true
     },
   },
 }))
