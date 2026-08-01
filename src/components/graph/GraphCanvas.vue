@@ -54,6 +54,7 @@ const tagBubbles = computed<TagBubble[]>(() => {
 })
 
 const expanded = ref<Set<string>>(new Set())
+function isExpanded(id: string) { return expanded.value.has(id) }
 
 function layout() {
   const ns: GNode[] = []
@@ -198,12 +199,12 @@ onMounted(layout)
         <line v-for="(l, i) in links" :key="'l' + i" :x1="l.source.x" :y1="l.source.y" :x2="l.target.x" :y2="l.target.y" class="edge" />
         <g v-for="n in nodes" :key="n.id"
           :transform="`translate(${n.x},${n.y})`"
-          class="node" :class="{ tag: n.tag, expanded: n.tag && expanded.has(n.id) }"
+          class="node" :class="{ tag: n.tag, expanded: n.tag && isExpanded(n.id) }"
           @pointerdown="onNodeDown($event, n.id)"
           @click.prevent="openNode(n.id)">
-          <circle :r="n.r" :fill="n.tag ? n.color : n.color" :opacity="n.tag && !expanded.has(n.id) ? 0.85 : 1" />
+          <circle :r="n.r" :fill="n.color" :opacity="n.tag && !isExpanded(n.id) ? 0.85 : 1" />
           <template v-if="n.tag">
-            <text v-if="!expanded.has(n.id)" y="2" text-anchor="middle" class="tag-label">{{ n.title }}</text>
+            <text v-if="!isExpanded(n.id)" y="2" text-anchor="middle" class="tag-label">{{ n.title }}</text>
             <text v-else y="-14" text-anchor="middle" class="tag-label small">{{ n.title }}</text>
           </template>
           <text v-else :y="n.r + 12" text-anchor="middle" class="label">{{ n.title }}</text>
