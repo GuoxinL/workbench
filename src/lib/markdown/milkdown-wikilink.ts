@@ -44,8 +44,21 @@ export const wikilinkAttr = $markAttr('wikilink')
 /** wikilink mark schema */
 export const wikilinkSchema = $markSchema('wikilink', () => ({
   prio: 100,
+  attrs: {
+    title: { default: '' },
+    slug: { default: '' },
+  },
   parseDOM: [{ tag: 'a.wikilink' }],
-  toDOM: (mark) => ['a', { class: 'wikilink', href: '#', 'data-title': (mark.attrs.title as string) || '', 'data-slug': (mark.attrs.slug as string) || '' }, 0],
+  toDOM: (mark) => [
+    'a',
+    {
+      class: 'wikilink',
+      href: '#',
+      'data-title': (mark.attrs.title as string) || '',
+      'data-slug': (mark.attrs.slug as string) || '',
+    },
+    0,
+  ],
   parseMarkdown: {
     match: (node) =>
       node.type === 'link' &&
