@@ -53,3 +53,26 @@ body {
 .muted {
   color: var(--muted);
 }
+
+/* 双链（wikilink）通用样式 */
+a.wikilink {
+  color: var(--brand);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--brand);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+a.wikilink:hover {
+  background: var(--brand-weak);
+}
+a.wikilink[href="#"] {
+  pointer-events: auto;
+}
+
+/* Milkdown 编辑器全局微调 */
+.milkdown {
+  font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  line-height: 1.8;
+}
+.milkdown h2 { font-size: 1.5em; margin: 1em 0 0.5em; }
+.milkdown h3 { font-size: 1.25em; margin: 0.8em 0 0.4em; }

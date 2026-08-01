@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import type { Article } from '@/types'
 import { useDataStore } from '@/stores/data'
 import { useAutoSave } from '@/composables/useAutoSave'
+import { slug } from '@/lib/slug'
 import MilkdownEditor from './MilkdownEditor.vue'
 import ArticleOutline from './ArticleOutline.vue'
 import RelatedPanel from './RelatedPanel.vue'
@@ -58,6 +59,24 @@ function onContentChange(md: string) {
 
 /** 外部 flush：ArticlesView 切走前落盘 */
 defineExpose({ flush })
+
+/** 双链点击：wikilink 的 data-slug → 查找文章 → 跳转；不存在则提示创建 */
+function onWikilinkClick(e: MouseEvent) {
+  const el = (e.target as HTMLElement).closest('.wikilink') as HTMLElement | null
+  if (!el) return
+  const s = el.getAttribute('data-slug')
+  if (!s) return
+  const target = store.articles.find((n) => !n.deleted && slug(n.title) === s)
+  if (target) {
+    emit('open', target.id)
+  } else {
+    const title = el.getAttribute('data-title') || s
+    if (confirm(`创建文章「${title}」？`)) {
+      const na = store.addArticle(title)
+      emit('open', na.id)
+    }
+  }
+}
 
 // 大纲跳转：向编辑区内的 Milkdown 发送滚动事件
 function onJumpToHeading(id: string) {
@@ -116,7 +135,7 @@ const fromTodoTitle = computed(() => {
     <ArticleOutline :content="draftContent" @jump="onJumpToHeading" />
 
     <!-- 中栏：编辑区 -->
-    <div class="editor-scroll">
+    <div class="editor-scroll" @click="onWikilinkClick">
       <div class="bar">
         <input
           v-model="draftTitle"
