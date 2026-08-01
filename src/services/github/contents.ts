@@ -1,5 +1,4 @@
 import type { Article, Config, Manifest } from '@/types'
-import { slug } from '@/lib/slug'
 import { parseFrontmatter, serializeFrontmatter } from '@/lib/markdown/frontmatter'
 import { ConflictError, getFile, putFile } from './repoFile'
 import { emptyManifest, getManifest, indexFromArticles, putManifest } from './manifest'
@@ -8,7 +7,7 @@ export interface RemoteSnapshot {
   manifest: Manifest
   manifestSha: string
   articles: Article[]
-  /** slug -> 远端文件 blob sha，供更新已有文件时作为乐观锁基准（避免 GitHub 422） */
+  /** id -> 远端文件 blob sha，供更新已有文件时作为乐观锁基准（避免 GitHub 422） */
   shas: Record<string, string>
 }
 
@@ -49,20 +48,20 @@ export interface PushInput {
 export interface PushResult {
   /** 成功推送后的新 manifest（含各文件 sha） */
   manifest: Manifest
-  /** 发生冲突的 slug；非 null 时表示需重新拉取合并后重试（S10） */
+  /** 发生冲突的 id；非 null 时表示需重新拉取合并后重试（S10） */
   conflictSlug: string | null
   /** 推送后 manifest.json 的 sha（供下次乐观锁，对应 S10） */
   manifestSha: string
 }
 
-/** 推送本地文章到远端：逐文件 PUT（kb/<slug>.md）+ 更新 manifest.json。 */
+/** 推送本地文章到远端：逐文件 PUT（kb/<id>.md）+ 更新 manifest.json。 */
 export async function pushRemote(input: PushInput, config: Config): Promise<PushResult> {
   const manifest = emptyManifest()
   manifest.articles = indexFromArticles(input.articles)
   let conflictSlug: string | null = null
 
   for (const a of input.articles) {
-    const s = slug(a.title)
+    const s = a.id
     const md = serializeFrontmatter(
       {
         id: a.id,

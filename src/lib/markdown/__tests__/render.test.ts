@@ -20,7 +20,7 @@ describe('renderMarkdown', () => {
     expect(html).toContain('class="wikilink"')
     expect(html).toContain('data-slug="alpha"')
     expect(html).toContain('data-title="Alpha"')
-    expect(html).toContain('href="#/kb/alpha"')
+    expect(html).toContain('href="#"')
     expect(html).toContain('>Alpha</a>')
   })
 
@@ -30,15 +30,17 @@ describe('renderMarkdown', () => {
     expect(html).toContain('data-slug="alpha"')
   })
 
-  it('exists 返回 false → 追加 .missing 类（L5/L8）', () => {
-    const html = renderMarkdown('[[Ghost]]', { exists: () => false })
+  it('resolve 返回 null → 追加 .missing 类（L5/L8）', () => {
+    const html = renderMarkdown('[[Ghost]]', { resolve: () => null })
     expect(html).toContain('class="wikilink missing"')
   })
 
-  it('exists 返回 true → 不标 missing', () => {
-    const html = renderMarkdown('[[Alpha]]', { exists: () => true })
+  it('resolve 返回 id → 不标 missing，href 指向 #/articles/<id>', () => {
+    const html = renderMarkdown('[[Alpha]]', { resolve: () => 'fake-id' })
     expect(html).toContain('class="wikilink"')
     expect(html).not.toContain('missing')
+    expect(html).toContain('href="#/articles/fake-id"')
+    expect(html).toContain('data-id="fake-id"')
   })
 
   it('XSS 消毒：移除 script 与事件属性（§安全基线）', () => {

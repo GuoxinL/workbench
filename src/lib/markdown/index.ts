@@ -5,10 +5,10 @@ import { wikilinkExtension } from './wikilink'
 
 export interface RenderOptions {
   /**
-   * 判断某 slug 是否存在（用于标记缺失双链 .missing，对应 L5/L8）。
+   * 解析双链标题为文章 id（null 表示未找到，会标记 .missing，对应 L5/L8）。
    * 不传则不标记缺失，所有双链按已存在渲染。
    */
-  exists?: (slug: string) => boolean
+  resolve?: (title: string) => string | null
 }
 
 /**
@@ -18,7 +18,7 @@ export interface RenderOptions {
  */
 export function renderMarkdown(src: string, opts: RenderOptions = {}): string {
   const marked = new Marked({ gfm: true, breaks: false })
-  marked.use({ extensions: [highlightExtension(), wikilinkExtension(opts.exists)] })
+  marked.use({ extensions: [highlightExtension(), wikilinkExtension(opts.resolve)] })
   const raw = marked.parse(src, { async: false }) as string
   return DOMPurify.sanitize(raw)
 }

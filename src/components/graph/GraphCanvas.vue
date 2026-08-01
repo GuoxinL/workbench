@@ -47,10 +47,9 @@ function layout() {
   }))
   const g = buildGraph(store.articles)
   const ls: { source: string; target: string }[] = []
-  for (const [srcId, slugs] of g.out) {
-    for (const s of slugs) {
-      const tgtId = g.titleToId.get(s)
-      if (tgtId && srcId !== tgtId) ls.push({ source: srcId, target: tgtId })
+  for (const [srcId, targetIds] of g.out) {
+    for (const tgtId of targetIds) {
+      if (srcId !== tgtId) ls.push({ source: srcId, target: tgtId })
     }
   }
   const sim = forceSimulation(ns as any)

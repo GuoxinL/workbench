@@ -37,24 +37,25 @@ describe('buildGraph', () => {
       article('C', 'Gamma', 'hello'),
     ]
     const g = buildGraph(articles)
-    expect([...g.out.get('A')!]).toEqual(['beta'])
-    expect([...g.out.get('B')!].sort()).toEqual(['alpha', 'gamma'])
-    expect(g.in.get('beta')!.has('A')).toBe(true)
-    expect(g.in.get('alpha')!.has('B')).toBe(true)
+    expect([...g.out.get('A')!]).toEqual(['B'])
+    expect([...g.out.get('B')!].sort()).toEqual(['A', 'C'])
+    expect(g.in.get('B')!.has('A')).toBe(true)
+    expect(g.in.get('A')!.has('B')).toBe(true)
+    expect(g.in.get('C')!.has('B')).toBe(true)
     expect(g.missing.size).toBe(0)
-    expect(g.titleToId.get('gamma')).toBe('C')
+    expect(g.slugToId.get('gamma')).toBe('C')
   })
 
   it('忽略自引用（L9）', () => {
     const g = buildGraph([article('A', 'Alpha', '[[Alpha]]')])
     expect(g.out.get('A')!.size).toBe(0)
-    expect(g.in.get('alpha')?.size ?? 0).toBe(0)
+    expect(g.in.get('A')?.size ?? 0).toBe(0)
   })
 
   it('标记缺失链接（L5/L8）', () => {
     const g = buildGraph([article('A', 'Alpha', '[[Ghost]]')])
     expect(g.missing.has('ghost')).toBe(true)
-    expect(g.out.get('A')!.has('ghost')).toBe(true)
+    expect(g.out.get('A')!.size).toBe(0)
   })
 
   it('忽略已删除文章', () => {

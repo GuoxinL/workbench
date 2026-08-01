@@ -31,7 +31,7 @@ const pendingCount = computed(() => outgoing.value.filter((o) => o.missing).leng
 
 // 入链（L4）：来自哪些文章、引用所在行上下文（60 字，别名替换后）
 const incoming = computed(() => {
-  const sources = graph.value.in.get(selfSlug.value) ?? new Set<string>()
+  const sources = graph.value.in.get(props.article.id) ?? new Set<string>()
   return [...sources].map((id) => {
     const src = store.articleById(id)
     return { id, title: src?.title ?? '', excerpt: src ? contextLine(src.content, selfSlug.value) : '' }
