@@ -40,7 +40,15 @@ function loadData(): WorkbenchData {
     const raw = localStorage.getItem(DATA_KEY)
     if (raw) {
       const d = JSON.parse(raw) as WorkbenchData
-      if (d && Array.isArray(d.todos) && Array.isArray(d.articles)) return migrateData(d)
+      if (d && Array.isArray(d.todos) && Array.isArray(d.articles)) {
+        const migrated = migrateData(d)
+        // 防止历史残留：当所有文章均为墓碑时（无存活文章），清除以触发播种恢复
+        // 正常情况（有存活文章 + 有墓碑）则保留墓碑供同步引擎做远端删除传播
+        if (migrated.articles.length > 0 && !migrated.articles.some((a) => !a.deleted)) {
+          migrated.articles = []
+        }
+        return migrated
+      }
     }
   } catch {
     /* 损坏数据回落到空 */

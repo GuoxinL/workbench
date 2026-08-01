@@ -82,4 +82,21 @@ describe('data store —— 待办 / 知识库文章', () => {
     expect(todos.length).toBe(4)
     expect(arts.some((n) => n.title === '双链说明' && n.content.includes('[[欢迎使用工作台]]'))).toBe(true)
   })
+
+  it('loadData 清理全部墓碑文章（防止全删后列表为空）', () => {
+    const s1 = useDataStore()
+    const a1 = s1.addArticle('文章一')
+    const a2 = s1.addArticle('文章二')
+    s1.removeArticle(a1.id)
+    s1.removeArticle(a2.id)
+    // localStorage 中保留 < 30 天的墓碑（persist 调用 cleanupTombstones）
+    const raw = JSON.parse(localStorage.getItem('wb.data.v1') || '{}')
+    const deletedCount = raw.articles.filter((x: any) => x.deleted).length
+    expect(deletedCount).toBeGreaterThanOrEqual(2)
+
+    // 模拟重载：新 store 实例应检测到「全墓碑」并清除
+    setActivePinia(createPinia())
+    const s2 = useDataStore()
+    expect(s2.articles.filter((n) => !n.deleted).length).toBe(0)
+  })
 })
