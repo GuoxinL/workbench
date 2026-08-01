@@ -70,19 +70,41 @@ export const wikilinkSchema = $markSchema('wikilink', () => ({
   },
   toMarkdown: {
     match: (mark) => mark.type.name === 'wikilink',
-    // 关键：必须返回 truthy（state.addNode 返回 state 本身），否则序列化器会
-    // 在 `[[title]]` 之后再把节点原始文本（别名）重复输出一遍，导致内容被
-    // 污染（如 `[[标题]]别名别名`）。node.text 即编辑器中的展示别名，
-    // 据此还原 `[[title|alias]]`，保证保存/重载后别名不丢。
+    // 产出 wikilink 类型的 mdast 节点（携带 title/alias），由自定义 mdast
+    // handler（wikilinkMdHandler，经 remarkStringifyOptionsCtx 注册）原样输出
+    // `[[title|alias]]`。直接 addNode('text', '[[...]]') 会被 markdown 转义器把
+    // `[` 转义成 `\[`，破坏双链语法（导致保存后丢失、引用面板误报无出链）。
+    // 必须返回 falsy（见 runner 内说明），让别名文本作为 mdast 子节点正常发出。
     runner: (state, mark, node) => {
       const title = (mark.attrs.title as string) || 'untitled'
       const alias = (node && node.isText ? (node as any).text : '') || title
-      const serialized = alias && alias !== title ? `[[${title}|${alias}]]` : `[[${title}]]`
-      state.addNode('text', undefined, serialized)
-      return true
+      // 用 withMark 打开 wikilink 类型的 mdast 节点（携带 title/alias）。
+      // 必须返回 falsy：内置 link mark 即如此 —— 返回 truthy 会让序列化器跳过
+      // #runProseNode，导致别名文本子节点不被输出，mdast 节点只剩空壳，自定义
+      // handler 拿不到 alias。返回 undefined 后 #runProseNode 会把别名文本作为
+      // mdast 子节点正常 emit 进来。
+      ;(state as any).withMark(mark, 'wikilink', undefined, { title, alias })
+      return
     },
   },
 }))
+
+/**
+ * mdast 序列化 handler：将 wikilink 节点输出为不被转义的 `[[标题|别名]]`。
+ * 经 MilkdownEditor 的 remarkStringifyOptionsCtx 注册。自定义 handler 的返回
+ * 字符串由 mdast-util-to-markdown 原样使用，不会二次转义（对比内置 text handler
+ * 会对 `[` 转义），从而保住双链语法。
+ */
+export function wikilinkMdHandler(
+  node: { title?: string; alias?: string },
+  _parent?: unknown,
+  _state?: unknown,
+  _info?: unknown,
+): string {
+  const title = node?.title || 'untitled'
+  const alias = node?.alias || title
+  return `[[${title}${alias && alias !== title ? `|${alias}` : ''}]]`
+}
 
 /** 最大单次遍历节点数，防止畸形输入导致死循环 */
 const MAX_PARTS = 1000

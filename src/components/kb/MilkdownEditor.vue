@@ -1,12 +1,13 @@
 <script lang="ts">
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from '@milkdown/kit/core'
+import { remarkStringifyOptionsCtx } from '@milkdown/core'
 import { commonmark } from '@milkdown/kit/preset/commonmark'
 import { gfm } from '@milkdown/kit/preset/gfm'
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener'
 import { $prose } from '@milkdown/kit/utils'
 import { nord } from '@milkdown/theme-nord'
 import { Milkdown, MilkdownProvider, useEditor, useInstance } from '@milkdown/vue'
-import { wikilinkSchema, wikilinkInputRule, wikilinkRemark } from '@/lib/markdown/milkdown-wikilink'
+import { wikilinkSchema, wikilinkInputRule, wikilinkRemark, wikilinkMdHandler } from '@/lib/markdown/milkdown-wikilink'
 import { scanConvertWikilinks } from '@/lib/markdown/scan-wikilinks'
 import { pasteImagePlugin } from '@/lib/markdown/paste-image'
 import { codeMirror } from '@milkdown/crepe/feature/code-mirror'
@@ -22,7 +23,12 @@ const MilkdownCore = defineComponent({
   props: { modelValue: String },
     emits: ['update:modelValue', 'ready'],
   setup(props, { emit }) {
-    let scanning = false
+    // 初始即为 true：屏蔽编辑器 build / 首次 markdownUpdated 推送。加载时文档里
+    // `[[...]]` 还是纯文本（wikilink mark 由 waitEditor 里的 scanConvertWikilinks
+    // 生成），若此刻把序列化结果回吐给父组件，mdast 的 text handler 会把 `[`
+    // 转义成 `\[`，污染 draftContent（表现为引用面板「无出链」、保存后双链丢失）。
+    // 待 mark 生成后再放开，后续编辑走带 mark 的序列化（wikilinkMdHandler 原样输出）。
+    let scanning = true
     // 编辑器渲染完成后通知父组件重跑双链缺失标记等后处理
     const onReady = () => emit('ready')
 
@@ -32,6 +38,17 @@ const MilkdownCore = defineComponent({
         .config((ctx) => {
           ctx.set(rootCtx, root)
           ctx.set(defaultValueCtx, props.modelValue ?? '')
+          // 注册 wikilink 的 mdast 序列化 handler：让 `[[标题]]` 在导出 markdown
+          // 时不被 markdown 转义器把 `[` 转义成 `\[`（否则双链语法损坏、保存后丢失）。
+          // 合并既有 handlers，避免覆盖 crepe 等其它序列化 handler。
+          const prev = ctx.get(remarkStringifyOptionsCtx) as
+            | { handlers?: Record<string, unknown>; encode?: unknown }
+            | undefined
+          ctx.set(remarkStringifyOptionsCtx, {
+            ...prev,
+            // wikilink 非 mdast 标准节点，Handlers 类型不包含它，故整体断言
+            handlers: { ...(prev?.handlers ?? {}), wikilink: wikilinkMdHandler } as any,
+          })
           ctx.get(listenerCtx).markdownUpdated((_, md: string) => {
             if (!scanning) emit('update:modelValue', md)
           })
