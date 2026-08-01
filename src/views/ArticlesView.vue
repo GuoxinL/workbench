@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDataStore } from '@/stores/data'
 import ArticleList from '@/components/kb/ArticleList.vue'
@@ -32,7 +32,6 @@ function onCreate() {
   const a = store.addArticle() // N3：默认「未命名文章」+ 同名去重
   selectedId.value = a.id
   router.push({ name: 'articles', params: { id: a.id } })
-  nextTick(() => editorRef.value?.enterEdit()) // N3：进编辑并全选标题
 }
 </script>
 

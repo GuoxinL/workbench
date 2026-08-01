@@ -1,24 +1,20 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { Article } from '@/types'
 import { useDataStore } from '@/stores/data'
-import { renderMarkdown } from '@/lib/markdown'
-import { slug } from '@/lib/slug'
-import { resolveTitle } from '@/lib/links'
 import { useAutoSave } from '@/composables/useAutoSave'
+import MilkdownEditor from './MilkdownEditor.vue'
+import ArticleOutline from './ArticleOutline.vue'
+import RelatedPanel from './RelatedPanel.vue'
 import LinksPanel from './LinksPanel.vue'
-import WikiAutocomplete from './WikiAutocomplete.vue'
 
 const props = defineProps<{ article: Article | null }>()
 const emit = defineEmits<{ open: [string]; changed: [] }>()
 const store = useDataStore()
 
-const mode = ref<'read' | 'edit'>('read')
 const draftTitle = ref('')
 const draftContent = ref('')
 const draftTags = ref<string[]>([])
-const titleRef = ref<HTMLInputElement | null>(null)
-const contentRef = ref<HTMLTextAreaElement | null>(null)
 
 function isDirty(): boolean {
   const a = props.article
@@ -26,7 +22,6 @@ function isDirty(): boolean {
   return a.title !== draftTitle.value.trim() || a.content !== draftContent.value || JSON.stringify(a.tags) !== JSON.stringify(draftTags.value)
 }
 
-// N6：只在切换文章（id 变化）时重置草稿，编辑中外部数据变更不打断
 watch(
   () => props.article?.id,
   () => {
@@ -34,13 +29,11 @@ watch(
       draftTitle.value = props.article.title
       draftContent.value = props.article.content
       draftTags.value = [...props.article.tags]
-      mode.value = 'read'
     }
   },
   { immediate: true },
 )
 
-// N5：自动保存 700ms 防抖 + flushNow
 const { schedule, flush } = useAutoSave(() => {
   if (isDirty()) doSave()
 }, 700)
@@ -57,38 +50,23 @@ function doSave() {
   emit('changed')
 }
 
-// N5：失焦 / 切回阅读 / 切走前立即落盘
-function enterEdit() {
-  mode.value = 'edit'
-  nextTick(() => {
-    titleRef.value?.focus()
-    titleRef.value?.select()
-  })
-}
-function enterRead() {
-  flush()
-  mode.value = 'read'
+/** Milkdown 内容变更回调 */
+function onContentChange(md: string) {
+  draftContent.value = md
+  schedule()
 }
 
-// 供视图层在「新建」「切走」时调用（N3 / N5）
-defineExpose({ enterEdit, flush })
+/** 外部 flush：ArticlesView 切走前落盘 */
+defineExpose({ flush })
 
-function onPreviewClick(e: MouseEvent) {
-  const a = (e.target as HTMLElement).closest('.wikilink') as HTMLElement | null
-  if (!a) return
-  // 优先用 data-id（渲染时已通过标题→id 解析）；缺失时走 slug 回退
-  const id = a.getAttribute('data-id')
-  if (id) { emit('open', id); return }
-  const s = a.getAttribute('data-slug')!
-  const target = store.articles.find((n) => !n.deleted && slug(n.title) === s)
-  if (target) emit('open', target.id)
-  else if (confirm(`创建文章「${a.getAttribute('data-title')}」？`)) {
-    const na = store.addArticle(a.getAttribute('data-title')!)
-    emit('open', na.id)
-  }
+// 大纲跳转：向编辑区内的 Milkdown 发送滚动事件
+function onJumpToHeading(id: string) {
+  const el = document.querySelector(`#${CSS.escape(id)}, [data-heading="${CSS.escape(id)}"]`)
+    || document.querySelector('.milkdown [id]')  // 兼容无 ID 的备选
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-// TAG1/TAG2：标签编辑（彩色 chip）
+// 标签
 function addTag(v: string) {
   const t = v.trim()
   if (t && !draftTags.value.includes(t)) draftTags.value.push(t)
@@ -110,21 +88,20 @@ function tagColor(t: string): string {
 async function remove() {
   if (!props.article) return
   try {
-    await ElMessageBox.confirm(`删除文章「${props.article.title}」？其它文章中的引用将标记为未创建。`, '删除确认', {
+    await ElMessageBox.confirm(`删除文章「${props.article.title}」？`, '删除确认', {
       type: 'warning',
       confirmButtonText: '删除',
       cancelButtonText: '取消',
     })
     store.removeArticle(props.article.id)
     emit('open', '')
-  } catch {
-    /* 取消 */
-  }
+  } catch { /* 取消 */ }
 }
 
-const html = computed(() =>
-  props.article ? renderMarkdown(draftContent.value, { resolve: (title) => resolveTitle(store.articles, title) }) : '',
-)
+function scrollTop() {
+  document.querySelector('.editor-scroll')?.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
 const wordCount = computed(() => draftContent.value.replace(/\s/g, '').length)
 const fromTodoTitle = computed(() => {
   const a = props.article
@@ -135,143 +112,132 @@ const fromTodoTitle = computed(() => {
 
 <template>
   <section v-if="article" class="editor">
-    <div class="bar">
-      <input
-        ref="titleRef"
-        v-model="draftTitle"
-        class="title-input"
-        :readonly="mode === 'read'"
-        @input="schedule"
-        @blur="schedule"
-      />
-      <div class="bar-actions">
-        <el-button v-if="mode === 'read'" size="small" @click="enterEdit">编辑</el-button>
-        <el-button v-else size="small" type="primary" @click="enterRead">完成</el-button>
-        <el-button size="small" type="danger" plain @click="remove">删除</el-button>
+    <!-- 左栏：大纲 -->
+    <ArticleOutline :content="draftContent" @jump="onJumpToHeading" />
+
+    <!-- 中栏：编辑区 -->
+    <div class="editor-scroll">
+      <div class="bar">
+        <input
+          v-model="draftTitle"
+          class="title-input"
+          placeholder="文章标题"
+          @input="schedule"
+          @blur="schedule"
+        />
+        <div class="bar-actions">
+          <el-button size="small" type="danger" plain @click="remove">删除</el-button>
+        </div>
       </div>
-    </div>
 
-    <div class="meta muted">
-      <span>创建 {{ new Date(article.createdAt).toLocaleString() }}</span>
-      <span>更新 {{ new Date(article.updatedAt).toLocaleString() }}</span>
-      <span>字数 {{ wordCount }}</span>
-      <span v-if="fromTodoTitle">源自待办：{{ fromTodoTitle }}</span>
-    </div>
-
-    <div class="tags">
-      <span
-        v-for="t in draftTags"
-        :key="t"
-        class="tag"
-        :style="{ background: tagColor(t) }"
-        @click="mode === 'edit' && removeTag(t)"
-      >{{ t }} <template v-if="mode === 'edit'">×</template></span>
-      <input
-        v-if="mode === 'edit'"
-        v-model="tagInput"
-        class="tag-input"
-        placeholder="加标签回车"
-        @keydown.enter.prevent="addTag(tagInput)"
-      />
-    </div>
-
-    <details class="help">
-      <summary>Markdown / 双链引用语法帮助</summary>
-      <div class="help-body">
-        <p class="help-h">Markdown：</p>
-        <ul>
-          <li><code># 标题</code> / <code>## 小标题</code> 分级标题</li>
-          <li><code>**粗体**</code>、<code>*斜体*</code>、<code>`行内代码`</code></li>
-          <li><code>- 列表项</code>（无序）、<code>1. 列表项</code>（有序）</li>
-          <li><code>&gt; 引用</code> 引用块</li>
-          <li><code>[链接文字](https://example.com)</code> 外链</li>
-        </ul>
-        <p class="help-h">双链引用（知识库内跳转）：</p>
-        <ul>
-          <li><code>[[文章标题]]</code> 引用一篇已有文章，渲染为可点击链接；若文章不存在会提示创建</li>
-          <li><code>[[文章标题|显示名]]</code> 引用但显示自定义文字</li>
-          <li>改文章标题会自动改写所有指向它的引用</li>
-        </ul>
-        <p class="help-h">标签：</p>
-        <ul>
-          <li>切换到「编辑」后，在上方标签区输入框回车即可添加标签；去「标签」视图按标签聚合查看</li>
-        </ul>
+      <div class="meta muted">
+        <span>创建 {{ new Date(article.createdAt).toLocaleString() }}</span>
+        <span>更新 {{ new Date(article.updatedAt).toLocaleString() }}</span>
+        <span>字数 {{ wordCount }}</span>
+        <span v-if="fromTodoTitle">源自待办：{{ fromTodoTitle }}</span>
       </div>
-    </details>
 
-    <div class="body">
-      <textarea
-        v-if="mode === 'edit'"
-        ref="contentRef"
-        v-model="draftContent"
-        class="content"
-        placeholder="支持 Markdown 与 [[双链]]…"
-        @input="schedule"
-        @blur="flush"
+      <div class="tags">
+        <span v-for="t in draftTags" :key="t" class="tag" :style="{ background: tagColor(t) }" @click="removeTag(t)">{{ t }} ×</span>
+        <input v-model="tagInput" class="tag-input" placeholder="加标签回车" @keydown.enter.prevent="addTag(tagInput)" />
+      </div>
+
+      <details class="help">
+        <summary>Markdown / 双链引用语法帮助</summary>
+        <div class="help-body">
+          <p class="help-h">Markdown：</p>
+          <ul>
+            <li><code># 标题</code> / <code>## 小标题</code> 分级标题</li>
+            <li><code>**粗体**</code>、<code>*斜体*</code>、<code>`行内代码`</code></li>
+            <li><code>- 列表项</code> / <code>1. 列表项</code></li>
+            <li><code>![[图片说明]](url)</code> 图片</li>
+          </ul>
+          <p class="help-h">双链引用：</p>
+          <ul>
+            <li><code>[[文章标题]]</code> 引用文章</li>
+            <li><code>[[文章标题|别名]]</code> 引用并显示别名</li>
+          </ul>
+          <p class="help-h">标签：</p>
+          <ul>
+            <li>上方标签区输入框回车即可添加标签</li>
+          </ul>
+        </div>
+      </details>
+
+      <MilkdownEditor
+        v-if="draftContent !== undefined"
+        :model-value="draftContent"
+        @update:model-value="onContentChange"
       />
-      <WikiAutocomplete :textarea="contentRef" v-model="draftContent" :exclude-id="article.id" />
-      <div v-if="mode === 'read'" class="preview markdown" @click="onPreviewClick" v-html="html" />
-      <div v-else class="preview markdown live" v-html="html" />
+
+      <LinksPanel :article="article" @open="emit('open', $event)" />
     </div>
 
-    <LinksPanel :article="article" @open="emit('open', $event)" />
+    <!-- 右栏：推荐 -->
+    <RelatedPanel :article="article" @open="emit('open', $event)" />
+
+    <!-- Top 按钮 -->
+    <button class="top-btn" title="回到顶部" @click="scrollTop">⬆</button>
   </section>
   <section v-else class="editor empty muted">
-    <p>从左侧选择一篇文章，或点击「＋ 新建」</p>
+    <p>从列表选择一篇文章，或点击「＋ 新建」</p>
   </section>
 </template>
 
 <style scoped>
 .editor {
-  flex: 1;
   display: flex;
-  flex-direction: column;
+  flex: 1;
   min-width: 0;
-  padding: 16px 20px;
-  overflow-y: auto;
+  height: calc(100vh - 110px);
+  position: relative;
 }
+
+.editor-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px 120px;
+  min-width: 0;
+}
+
 .bar {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-bottom: 8px;
 }
 .title-input {
   flex: 1;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   border: none;
   outline: none;
   background: transparent;
   color: var(--fg);
 }
-.title-input[readonly] {
-  cursor: default;
-}
-.bar-actions {
-  display: flex;
-  gap: 6px;
-  flex: none;
-}
+.bar-actions { display: flex; gap: 6px; flex: none; }
+
 .meta {
   display: flex;
   gap: 16px;
   font-size: 12px;
-  margin: 8px 0;
+  margin-bottom: 8px;
   flex-wrap: wrap;
 }
+
 .tags {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 .tag {
   color: #fff;
   font-size: 12px;
   padding: 2px 8px;
   border-radius: 999px;
-  cursor: default;
+  cursor: pointer;
 }
 .tag-input {
   border: 1px solid var(--line);
@@ -281,69 +247,46 @@ const fromTodoTitle = computed(() => {
   outline: none;
   width: 120px;
 }
-.body {
-  flex: 1;
-  display: flex;
-  gap: 16px;
-  min-height: 0;
-}
+
 .help {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
   padding: 4px 12px;
   font-size: 13px;
+  margin-bottom: 12px;
 }
-.help summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-weight: 600;
-  padding: 4px 0;
-}
-.help-body {
-  padding: 4px 0 8px;
-}
-.help-body ul {
-  margin: 4px 0 10px;
-  padding-left: 18px;
-}
-.help-body li {
-  margin: 2px 0;
-}
-.help-h {
-  font-weight: 600;
-  margin: 8px 0 2px;
-}
-.help code {
-  background: var(--bg);
-  border-radius: 4px;
-  padding: 0 4px;
-  font-family: ui-monospace, monospace;
-}
-.content {
-  flex: 1;
-  min-width: 0;
-  resize: none;
+.help summary { cursor: pointer; color: var(--muted); font-weight: 600; padding: 4px 0; }
+.help-body { padding: 4px 0 8px; }
+.help-body ul { margin: 4px 0 10px; padding-left: 18px; }
+.help-body li { margin: 2px 0; }
+.help-h { font-weight: 600; margin: 8px 0 2px; }
+.help code { background: var(--bg); border-radius: 4px; padding: 0 4px; font-family: ui-monospace, monospace; }
+
+.top-btn {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px;
-  font-family: inherit;
-  font-size: 14px;
-  line-height: 1.7;
-  outline: none;
-}
-.preview {
-  flex: 1;
-  min-width: 0;
-  overflow-y: auto;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px 16px;
   background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  cursor: pointer;
+  font-size: 16px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.15s;
 }
+.top-btn:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+
 .empty {
   align-items: center;
   justify-content: center;
   display: flex;
 }
+.muted { color: var(--muted); }
 </style>
