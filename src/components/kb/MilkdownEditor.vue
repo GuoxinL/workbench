@@ -85,6 +85,8 @@ const MilkdownCore = defineComponent({
       ed.action((ctx: any) => {
         const view = ctx.get(editorViewCtx) as EditorView | undefined
         if (!view) return
+        // 暴露给 ArticleEditor 的 insertAtCursor（右键菜单插入）
+        ;(window as any).__milkdownView = view
         scanning = true
         scanConvertWikilinks(view)
         scanning = false
