@@ -129,9 +129,11 @@ function layout() {
   nodes.value = ns
   links.value = ls as any
   ;(window as any).__graphDebug = {
-    ...(window as any).__graphDebug,
-    nodesFinal: nodes.value.length,
-    linksFinal: links.value.length,
+    nodesFinal: ns.length,
+    linksFinal: ls.length,
+    expanded: [...expanded.value],
+    bubbleTags: bubbles.map(b => ({ tag: b.tag, ids: b.ids })),
+    nonDeletedArts: store.articles.filter(a => !a.deleted).map(a => ({id:a.id,title:a.title})),
   }
 }
 
