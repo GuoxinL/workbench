@@ -1,12 +1,8 @@
 <script setup lang="ts">
 import { compressImage } from '@/lib/image'
 
-const emit = defineEmits<{ close: [] }>()
-
-/** 在 ProseMirror 光标处插入/环绕文本 */
 function view() { return (window as any).__milkdownView }
 
-/** 直接用文本操作，不依赖 ProseMirror mark（跨 schema 安全） */
 function insertText(text: string) {
   const v = view()
   if (!v) return
@@ -33,14 +29,11 @@ function insertLine(text: string) {
   const v = view()
   if (!v) return
   const { from } = v.state.selection
-  const $pos = v.state.doc.resolve(from)
-  const bol = $pos.start() // start of current block
-  const beforeBlock = from === bol
-  const prefix = beforeBlock ? text : '\n' + text
-  insertText(prefix)
+  const bol = v.state.doc.resolve(from).start()
+  insertText(from === bol ? text : '\n' + text)
 }
 
-// ── 按钮动作 ──
+// 按钮动作
 function onBold() { wrapText('**', '**') }
 function onItalic() { wrapText('*', '*') }
 function onStrike() { wrapText('~~', '~~') }
@@ -51,95 +44,71 @@ function onH3() { insertLine('### ') }
 function onUl() { insertLine('- ') }
 function onOl() { insertLine('1. ') }
 function onQuote() { insertLine('> ') }
-function onCodeBlock() { insertText('\n`\`\n') }
+function onCodeBlock() { insertText('\n```\n```\n') }
 function onHr() { insertText('\n---\n') }
-
-function onLink() {
-  const url = prompt('链接 URL：', 'https://')
-  if (url) insertText(`[${url}](${url})`)
-}
+function onLink() { const u = prompt('链接 URL', 'https://'); if (u) insertText('[' + u + '](' + u + ')') }
 
 async function onImage() {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = 'image/*'
-  input.onchange = async () => {
-    const file = input.files?.[0]
-    if (!file) return
-    try {
-      const dataUri = await compressImage(file)
-      insertText(`![](${dataUri})`)
-    } catch { /* ignore */ }
-  }
-  input.click()
+  const i = document.createElement('input')
+  i.type = 'file'; i.accept = 'image/*'
+  i.onchange = async () => { const f = i.files?.[0]; if (f) { try { const d = await compressImage(f); insertText('![](' + d + ')') } catch (_) {} } }
+  i.click()
 }
 
 function onTable() {
-  const rows = prompt('行数（默认 3）', '3')
-  const cols = prompt('列数（默认 3）', '3')
-  const r = parseInt(rows || '3', 10) || 3
-  const c = parseInt(cols || '3', 10) || 3
-  let table = ''
+  const r = parseInt(prompt('行数', '3') || '3', 10) || 3
+  const c = parseInt(prompt('列数', '3') || '3', 10) || 3
+  let t = ''
   for (let i = 0; i < r; i++) {
-    table += '| ' + Array(c).fill('  ').join(' | ') + ' |\n'
-    if (i === 0) table += '| ' + Array(c).fill('---').join(' | ') + ' |\n'
+    t += '| ' + Array(c).fill('  ').join(' | ') + ' |\n'
+    if (i === 0) t += '| ' + Array(c).fill('---').join(' | ') + ' |\n'
   }
-  insertText(table)
+  insertText(t)
 }
+
+const btns = [
+  { t: 'B', tip: '粗体', fn: onBold },
+  { t: 'I', tip: '斜体', fn: onItalic },
+  { t: 'S', tip: '删除线', fn: onStrike },
+  { t: '`', tip: '行内代码', fn: onCode },
+  { t: 'sep' },
+  { t: 'H1', tip: '一级标题', fn: onH1 },
+  { t: 'H2', tip: '二级标题', fn: onH2 },
+  { t: 'H3', tip: '三级标题', fn: onH3 },
+  { t: 'sep' },
+  { t: '≡', tip: '无序列表', fn: onUl },
+  { t: '1.', tip: '有序列表', fn: onOl },
+  { t: '❝', tip: '引用', fn: onQuote },
+  { t: 'sep' },
+  { t: '{}', tip: '代码块', fn: onCodeBlock },
+  { t: '⊞', tip: '表格', fn: onTable },
+  { t: 'sep' },
+  { t: '🔗', tip: '链接', fn: onLink },
+  { t: '🖼', tip: '图片', fn: onImage },
+  { t: '—', tip: '分割线', fn: onHr },
+]
 </script>
 
 <template>
   <div class="toolbar">
-    <button title="粗体 (Ctrl+B)" @click="onBold">B</button>
-    <button title="斜体 (Ctrl+I)" @click="onItalic">I</button>
-    <button title="删除线" @click="onStrike">S</button>
-    <button title="行内代码" @click="onCode">C</button>
-    <span class="sep" />
-    <button title="一级标题" @click="onH1">H1</button>
-    <button title="二级标题" @click="onH2">H2</button>
-    <button title="三级标题" @click="onH3">H3</button>
-    <span class="sep" />
-    <button title="无序列表" @click="onUl">≡</button>
-    <button title="有序列表" @click="onOl">1.</button>
-    <button title="引用" @click="onQuote">❝</button>
-    <span class="sep" />
-    <button title="代码块" @click="onCodeBlock">{ }</button>
-    <button title="表格" @click="onTable">⊞</button>
-    <span class="sep" />
-    <button title="链接" @click="onLink">🔗</button>
-    <button title="图片" @click="onImage">🖼</button>
-    <button title="分割线" @click="onHr">—</button>
+    <template v-for="b in btns" :key="b.t">
+      <span v-if="b.t === 'sep'" class="sep" />
+      <button v-else :title="b.tip" @click="b.fn">{{ b.t }}</button>
+    </template>
   </div>
 </template>
 
 <style scoped>
 .toolbar {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 6px 4px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
+  display: flex; align-items: center; gap: 2px; padding: 6px 4px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+  margin-bottom: 8px; flex-wrap: wrap;
 }
-.toolbar button:first-child { font-weight: 700; }  /* B → 粗体 */
-.toolbar button:nth-child(2) { font-style: italic; }  /* I → 斜体 */
-.toolbar button:nth-child(3) { text-decoration: line-through; }  /* S → 删除线 */
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--fg);
-  transition: background 0.1s;
+.toolbar button {
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; border-radius: 4px; cursor: pointer;
+  font-size: 13px; color: var(--fg); transition: background 0.1s;
 }
-.toolbar button:hover {
-  background: var(--bg);
-}
+.toolbar button:hover { background: #fff; }
+.sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+</style>
