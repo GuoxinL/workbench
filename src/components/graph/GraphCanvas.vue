@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, shallowRef } from 'vue'
+import { computed, reactive, shallowRef, watch } from 'vue'
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation } from 'd3-force'
 import { useRouter } from 'vue-router'
 import { useDataStore } from '@/stores/data'
@@ -7,220 +7,122 @@ import { useDataStore } from '@/stores/data'
 const store = useDataStore()
 const router = useRouter()
 
-interface GNode {
-  id: string
-  title: string
-  x: number
-  y: number
-  r: number
-  color: string
-  tag?: boolean
-}
-interface GLink {
-  source: GNode
-  target: GNode
-}
+interface GNode { id: string; title: string; x: number; y: number; r: number; color: string; tag?: boolean }
+interface GLink { source: GNode; target: GNode }
 
 const nodes = shallowRef<GNode[]>([])
 const links = shallowRef<GLink[]>([])
 const transform = reactive({ x: 40, y: 40, k: 1 })
-const svgRef = ref<SVGSVGElement | null>(null)
-
-const palette = ['#3b82f6', '#ef4444', '#f59e0b', '#22c55e', '#a855f7', '#14b8a6', '#ec4899', '#64748b']
-function hashColor(s: string): string {
-  let h = 0
-  for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0
-  return palette[h % palette.length]
-}
+const svgRef = shallowRef<SVGSVGElement | null>(null)
 
 const hasNodes = computed(() => nodes.value.length > 0)
 
-// 按标签聚合文章
-interface TagBubble { tag: string; ids: string[]; maxUpdatedAt: number }
-const tagBubbles = computed<TagBubble[]>(() => {
-  const map = new Map<string, { ids: Set<string>; maxUpdatedAt: number }>()
-  for (const a of store.articles) {
-    if (a.deleted) continue
-    for (const t of a.tags) {
-      const entry = map.get(t) ?? { ids: new Set(), maxUpdatedAt: 0 }
-      entry.ids.add(a.id)
-      if (a.updatedAt > entry.maxUpdatedAt) entry.maxUpdatedAt = a.updatedAt
-      map.set(t, entry)
-    }
-  }
-  return [...map.entries()]
-    .map(([tag, v]) => ({ tag, ids: [...v.ids], maxUpdatedAt: v.maxUpdatedAt }))
-    .sort((a, b) => b.ids.length - a.ids.length)
+// ── 标签聚合 ──
+const palette = ['#3b82f6', '#ef4444', '#f59e0b', '#22c55e', '#a855f7', '#14b8a6', '#ec4899', '#64748b']
+function hc(s: string): string { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return palette[h % palette.length] }
+interface Bubble { tag: string; ids: string[] }
+const bubbles = computed<Bubble[]>(() => {
+  const m = new Map<string, Set<string>>()
+  for (const a of store.articles) { if (a.deleted) continue; for (const t of a.tags) { const s = m.get(t) ?? new Set<string>(); s.add(a.id); m.set(t, s) } }
+  return [...m.entries()].map(([tag, ids]) => ({ tag, ids: [...ids] })).sort((a, b) => b.ids.length - a.ids.length)
 })
 
+// ── 展开状态（reactive，push/splice 触发依赖追踪） ──
 const graphState = reactive({ expandedTags: [] as string[] })
 function isExpanded(id: string) { return graphState.expandedTags.includes(id) }
+function toggle(tag: string) {
+  const i = graphState.expandedTags.indexOf(tag)
+  i >= 0 ? graphState.expandedTags.splice(i, 1) : graphState.expandedTags.push(tag)
+}
+function collapseAll() { graphState.expandedTags.length = 0 }
 
-function layout() {
-  const ns: GNode[] = []
-  const ls: { source: string; target: string }[] = []
-
+// ── 自动 layout：expandedTags 或 articles 变化时重建 ──
+const rawLayout = computed(() => {
+  const ns: GNode[] = []; const ls: { source: string; target: string }[] = []
+  const arts = store.articles.filter(a => !a.deleted)
+  const artSet = new Set(arts.map(a => a.id))
+  const exp = new Set(graphState.expandedTags)  // 声明依赖 graphState.expandedTags
   // 标签气泡
-  const bubbles = tagBubbles.value
-  for (const b of bubbles) {
-    const radius = Math.max(28, Math.min(60, 20 + b.ids.length * 4))
-    ns.push({
-      id: b.tag,
-      title: b.tag,
-      x: 250 + Math.random() * 40 - 20,
-      y: 250 + Math.random() * 40 - 20,
-      r: radius,
-      color: hashColor(b.tag),
-      tag: true,
-    })
+  for (const b of bubbles.value) {
+    ns.push({ id: b.tag, title: b.tag, x: 250 + Math.random() * 20, y: 250 + Math.random() * 20, r: Math.max(28, Math.min(60, 18 + b.ids.length * 4)), color: hc(b.tag), tag: true })
   }
-
-  // 展开的文章节点
-  for (const b of bubbles) {
-    if (!graphState.expandedTags.includes(b.tag)) continue
-    const allArts = store.articles.filter((a) => !a.deleted)
+  // 展开文章
+  for (const b of bubbles.value) {
+    if (!exp.has(b.tag)) continue
     for (const aid of b.ids) {
-      const a = allArts.find((x) => x.id === aid)
-      if (!a || a.deleted) continue
-      ns.push({
-        id: a.id,
-        title: a.title,
-        x: 250 + Math.random() * 150 - 75,
-        y: 250 + Math.random() * 150 - 75,
-        r: 12,
-        color: hashColor(a.id),
-      })
+      const a = arts.find(x => x.id === aid)
+      if (!a) continue
+      ns.push({ id: a.id, title: a.title, x: 250 + Math.random() * 100 - 50, y: 250 + Math.random() * 100 - 50, r: 12, color: hc(a.id) })
     }
   }
-
-  // 展开文章之间的引用连线
-  const artSet = new Set(store.articles.filter((a) => !a.deleted).map((a) => a.id))
-  for (const b of bubbles) {
-    if (!graphState.expandedTags.includes(b.tag)) continue
+  // 展开连线
+  for (const b of bubbles.value) {
+    if (!exp.has(b.tag)) continue
     for (const aid of b.ids) {
-      const a = store.articles.find((x) => x.id === aid)
-      if (!a || a.deleted) continue
+      const a = arts.find(x => x.id === aid)
+      if (!a) continue
       const re = /\[\[([^\|\]]+)(?:\|([^\]]+))?\]\]/g
       let m: RegExpExecArray | null
       while ((m = re.exec(a.content)) !== null) {
-        const refTitle = m[1].trim().toLowerCase().replace(/\s+/g, ' ')
-        const target = store.articles.find((x) => !x.deleted && x.title.toLowerCase().replace(/\s+/g, ' ') === refTitle)
-        if (target && target.id !== a.id && artSet.has(target.id)) {
-          ls.push({ source: a.id, target: target.id })
-        }
+        const rt = m[1].trim().toLowerCase().replace(/\s+/g, ' ')
+        const tgt = arts.find(x => x.title.toLowerCase().replace(/\s+/g, ' ') === rt)
+        if (tgt && tgt.id !== a.id && artSet.has(tgt.id)) ls.push({ source: a.id, target: tgt.id })
       }
     }
   }
+  return { nodes: ns, links: ls }
+})
 
-  if (ns.length === 0) {
-    nodes.value = []
-    links.value = []
-    return
-  }
-
-  const sim = forceSimulation(ns as any)
+watch(rawLayout, (l) => {
+  if (l.nodes.length === 0) { nodes.value = []; links.value = []; return }
+  const sim = forceSimulation(l.nodes as any)
     .force('charge', forceManyBody().strength((d: any) => d.tag ? -400 : -200))
-    .force('link', forceLink(ls as any).id((d: any) => d.id).distance(80).strength(0.4))
+    .force('link', forceLink(l.links as any).id((d: any) => d.id).distance(80).strength(0.4))
     .force('center', forceCenter(250, 250))
     .force('collide', forceCollide((d: any) => (d.tag ? d.r + 8 : 18)))
     .stop()
-
   for (let i = 0; i < 300; i++) sim.tick()
-  nodes.value = ns
-  links.value = ls as any
-  ;(window as any).__graphDebug = {
-    nodesFinal: ns.length,
-    linksFinal: ls.length,
-    expanded: [...graphState.expandedTags],
-    bubbleTags: bubbles.map(b => ({ tag: b.tag, ids: b.ids })),
-    nonDeletedArts: store.articles.filter(a => !a.deleted).map(a => ({id:a.id,title:a.title})),
-  }
-}
+  nodes.value = l.nodes
+  links.value = l.links as any
+}, { immediate: true })
 
-function toggleTag(tag: string) {
-  if (graphState.expandedTags.includes(tag)) {
-    const idx = graphState.expandedTags.indexOf(tag)
-    if (idx >= 0) graphState.expandedTags.splice(idx, 1)
-  } else {
-    graphState.expandedTags.push(tag)
-  }
-  layout()
-}
-
-function collapseAll() {
-  graphState.expandedTags.length = 0
-  layout()
-}
-
+// ── 交互 ──
 function openNode(id: string) {
-  const n = nodes.value.find((x) => x.id === id)
-  if (n?.tag) {
-    toggleTag(id)
-  } else {
-    router.push({ name: 'articles', params: { id } })
-  }
+  const n = nodes.value.find(x => x.id === id)
+  if (n?.tag) toggle(id)
+  else router.push({ name: 'articles', params: { id } })
 }
 
-// ── 拖拽 + 缩放 ──
 let dragId: string | null = null
-function toUser(e: PointerEvent) {
-  const rect = svgRef.value!.getBoundingClientRect()
-  return { x: (e.clientX - rect.left - transform.x) / transform.k, y: (e.clientY - rect.top - transform.y) / transform.k }
-}
-function onNodeDown(e: PointerEvent, id: string) {
-  dragId = id
-  ;(e.target as Element).setPointerCapture?.(e.pointerId)
-}
-function onMove(e: PointerEvent) {
-  if (!dragId) return
-  const p = toUser(e)
-  const n = nodes.value.find((x) => x.id === dragId)
-  if (n) { n.x = p.x; n.y = p.y }
-}
+function toUser(e: PointerEvent) { const r = svgRef.value!.getBoundingClientRect(); return { x: (e.clientX - r.left - transform.x) / transform.k, y: (e.clientY - r.top - transform.y) / transform.k } }
+function onDown(e: PointerEvent, id: string) { dragId = id; (e.target as Element).setPointerCapture?.(e.pointerId) }
+function onMv(e: PointerEvent) { if (!dragId) return; const p = toUser(e); const n = nodes.value.find(x => x.id === dragId); if (n) { n.x = p.x; n.y = p.y } }
 function onUp() { dragId = null }
-function onWheel(e: WheelEvent) {
-  e.preventDefault()
-  const factor = e.deltaY < 0 ? 1.1 : 0.9
-  const rect = svgRef.value!.getBoundingClientRect()
-  const mx = e.clientX - rect.left
-  const my = e.clientY - rect.top
-  const newK = Math.min(3, Math.max(0.3, transform.k * factor))
-  transform.x = mx - ((mx - transform.x) * newK) / transform.k
-  transform.y = my - ((my - transform.y) * newK) / transform.k
-  transform.k = newK
-}
-
-onMounted(() => {
-  try { layout() } catch (e) { console.warn('[graph] onMounted layout error', e) }
-  ;(window as any).__graphToggle = (tag: string) => { try { toggleTag(tag) } catch (e) { console.warn('[graph] toggle error', e) } }
-  ;(window as any).__graphCollapse = () => { try { collapseAll() } catch (e) { console.warn('[graph] collapse error', e) } }
-})
+function onWheel(e: WheelEvent) { e.preventDefault(); const f = e.deltaY < 0 ? 1.1 : 0.9; const r = svgRef.value!.getBoundingClientRect(); const mx = e.clientX - r.left; const my = e.clientY - r.top; const nk = Math.min(3, Math.max(0.3, transform.k * f)); transform.x = mx - ((mx - transform.x) * nk) / transform.k; transform.y = my - ((my - transform.y) * nk) / transform.k; transform.k = nk }
 </script>
 
 <template>
   <div class="graph-wrap">
-    <div class="graph-toolbar">
+    <div class="tlb">
       <button class="btn" @click="collapseAll">收起全部</button>
-      <button class="btn" @click="layout">重新布局</button>
+      <button class="btn" @click="toggle(graphState.expandedTags[0])" v-if="false">重新布局</button>
       <span v-if="graphState.expandedTags.length" class="muted">已展开 {{ graphState.expandedTags.length }} 个标签</span>
       <span v-else class="muted">点击气泡展开</span>
     </div>
     <p v-if="!hasNodes" class="empty muted">还没有文章，添加标签后即可查看</p>
     <svg v-else ref="svgRef" class="canvas" viewBox="0 0 500 500"
-      @pointermove="onMove" @pointerup="onUp" @pointerleave="onUp" @wheel="onWheel">
-      <g :transform="`translate(${transform.x},${transform.y}) scale(${transform.k})`">
-        <line v-for="(l, i) in links" :key="'l' + i" :x1="l.source.x" :y1="l.source.y" :x2="l.target.x" :y2="l.target.y" class="edge" />
-        <g v-for="n in nodes" :key="n.id"
-          :transform="`translate(${n.x},${n.y})`"
-          class="node" :class="{ tag: n.tag, expanded: n.tag && isExpanded(n.id) }"
-          @pointerdown="onNodeDown($event, n.id)"
-          @click.prevent="openNode(n.id)">
-          <circle :r="n.r" :fill="n.color" :opacity="n.tag && !isExpanded(n.id) ? 0.85 : 1" />
+      @pointermove="onMv" @pointerup="onUp" @pointerleave="onUp" @wheel="onWheel">
+      <g :transform="'translate('+transform.x+','+transform.y+') scale('+transform.k+')'">
+        <line v-for="(l,i) in links" :key="'l'+i" :x1="l.source.x" :y1="l.source.y" :x2="l.target.x" :y2="l.target.y" class="edge" />
+        <g v-for="n in nodes" :key="n.id" :transform="'translate('+n.x+','+n.y+')'"
+          class="node" :class="{tag:n.tag,expanded:n.tag&&isExpanded(n.id)}"
+          @pointerdown="onDown($event,n.id)" @click.prevent="openNode(n.id)">
+          <circle :r="n.r" :fill="n.color" :opacity="n.tag&&!isExpanded(n.id)?.85:1" />
           <template v-if="n.tag">
-            <text v-if="!isExpanded(n.id)" y="2" text-anchor="middle" class="tag-label">{{ n.title }}</text>
-            <text v-else y="-14" text-anchor="middle" class="tag-label small">{{ n.title }}</text>
+            <text v-if="!isExpanded(n.id)" y="2" text-anchor="middle" class="tl">{{ n.title }}</text>
+            <text v-else y="-14" text-anchor="middle" class="tl sm">{{ n.title }}</text>
           </template>
-          <text v-else :y="n.r + 12" text-anchor="middle" class="label">{{ n.title }}</text>
+          <text v-else :y="n.r+12" text-anchor="middle" class="label">{{ n.title }}</text>
         </g>
       </g>
     </svg>
@@ -228,18 +130,18 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.graph-wrap { height: calc(100vh - 110px); display: flex; flex-direction: column; }
-.graph-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-.btn { padding: 6px 14px; border: 1px solid var(--line); border-radius: 7px; background: #fff; cursor: pointer; }
-.canvas { flex: 1; width: 100%; border: 1px solid var(--line); border-radius: 10px; background: #fff; touch-action: none; }
-.edge { stroke: #cbd5e1; stroke-width: 1.5; }
-.node { cursor: pointer; }
-.node circle { stroke: #fff; stroke-width: 2; transition: r 0.3s; }
-.node.tag circle { stroke-width: 3; }
-.node.expanded circle { opacity: 0.6; stroke-dasharray: 4 2; }
-.tag-label { font-size: 14px; fill: #fff; font-weight: 600; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
-.tag-label.small { font-size: 11px; fill: #666; font-weight: 600; text-shadow: none; }
-.label { font-size: 11px; fill: var(--fg); pointer-events: none; }
-.empty { flex: 1; display: flex; align-items: center; justify-content: center; }
-.muted { color: var(--muted); font-size: 13px; }
+.graph-wrap{height:calc(100vh - 110px);display:flex;flex-direction:column}
+.tlb{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.btn{padding:6px 14px;border:1px solid var(--line);border-radius:7px;background:#fff;cursor:pointer}
+.canvas{flex:1;width:100%;border:1px solid var(--line);border-radius:10px;background:#fff;touch-action:none}
+.edge{stroke:#cbd5e1;stroke-width:1.5}
+.node{cursor:pointer}
+.node circle{stroke:#fff;stroke-width:2;transition:r .3s}
+.node.tag circle{stroke-width:3}
+.node.expanded circle{opacity:.6;stroke-dasharray:4 2}
+.tl{font-size:14px;fill:#fff;font-weight:600;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.3)}
+.tl.sm{font-size:11px;fill:#666;font-weight:600;text-shadow:none}
+.label{font-size:11px;fill:var(--fg);pointer-events:none}
+.empty{flex:1;display:flex;align-items:center;justify-content:center}
+.muted{color:var(--muted);font-size:13px}
 </style>
