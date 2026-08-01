@@ -82,6 +82,20 @@ function uid(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 }
 
+/**
+ * LWW 合并：按 id 去重，updatedAt 大者胜出。
+ * 用于响应同域其它标签页的 localStorage 变更时的无冲突合并。
+ */
+function mergeLWW<T extends { id: string; updatedAt: number }>(current: T[], incoming: T[]): T[] {
+  const map = new Map<string, T>()
+  for (const it of current) map.set(it.id, it)
+  for (const it of incoming) {
+    const old = map.get(it.id)
+    if (!old || it.updatedAt > old.updatedAt) map.set(it.id, it)
+  }
+  return [...map.values()]
+}
+
 export const useDataStore = defineStore('data', () => {
   const data = ref<WorkbenchData>(loadData())
   const dirty = ref(false)
@@ -317,6 +331,24 @@ export const useDataStore = defineStore('data', () => {
     localStorage.setItem('wb.seeded', '1')
   }
   seedIfEmpty()
+
+  // T18：响应同域其它标签页的 localStorage 变更，LWW 合并避免竞态覆盖
+  window.addEventListener('storage', (e) => {
+    if (e.key !== DATA_KEY || !e.newValue) return
+    try {
+      const incoming = JSON.parse(e.newValue) as WorkbenchData
+      if (!incoming || !Array.isArray(incoming.articles) || !Array.isArray(incoming.todos)) return
+      data.value = {
+        ...data.value,
+        articles: mergeLWW(data.value.articles, incoming.articles),
+        todos: mergeLWW(data.value.todos, incoming.todos),
+        updatedAt: Date.now(),
+      }
+      // 不调 touch()/persist()，避免跨标签 ping-pong
+    } catch {
+      /* 忽略损坏数据 */
+    }
+  })
 
   return {
     data,
