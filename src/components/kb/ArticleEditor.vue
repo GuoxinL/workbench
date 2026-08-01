@@ -96,12 +96,14 @@ onMounted(refreshMissingLinks)
 /** 大纲跳转：在 Milkdown 编辑区滚动到匹配的标题 */
 function onJumpToHeading(id: string) {
   const container = document.querySelector('.milkdown')
-  if (!container) return
+  const scrollEl = document.querySelector('.editor-scroll')
+  if (!container || !scrollEl) return
   const headings = container.querySelectorAll('h1, h2, h3, h4')
   for (const h of headings) {
     const text = (h.textContent || '').trim()
     if (text.toLowerCase().replace(/\s+/g, '-') === id) {
-      h.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const offset = h.getBoundingClientRect().top - container.getBoundingClientRect().top + scrollEl.scrollTop - 20
+      scrollEl.scrollTo({ top: offset, behavior: 'smooth' })
       break
     }
   }
