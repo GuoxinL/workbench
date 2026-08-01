@@ -195,7 +195,7 @@ onMounted(layout)
     <div class="graph-toolbar">
       <button class="btn" @click="collapseAll">收起全部</button>
       <button class="btn" @click="layout">重新布局</button>
-      <span v-if="expanded.size" class="muted">已展开 {{ expanded.size }} 个标签</span>
+      <span v-if="expanded.length" class="muted">已展开 {{ expanded.length }} 个标签</span>
       <span v-else class="muted">点击气泡展开</span>
     </div>
     <p v-if="!hasNodes" class="empty muted">还没有文章，添加标签后即可查看</p>
