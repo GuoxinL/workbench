@@ -53,8 +53,8 @@ const tagBubbles = computed<TagBubble[]>(() => {
     .sort((a, b) => b.ids.length - a.ids.length)
 })
 
-const expanded = ref<Set<string>>(new Set())
-function isExpanded(id: string) { return expanded.value.has(id) }
+const expanded = ref<string[]>([])
+function isExpanded(id: string) { return expanded.value.includes(id) }
 
 function layout() {
   const ns: GNode[] = []
@@ -77,7 +77,7 @@ function layout() {
 
   // 展开的文章节点
   for (const b of bubbles) {
-    if (!expanded.value.has(b.tag)) continue
+    if (!expanded.value.includes(b.tag)) continue
     const allArts = store.articles.filter((a) => !a.deleted)
     for (const aid of b.ids) {
       const a = allArts.find((x) => x.id === aid)
@@ -96,7 +96,7 @@ function layout() {
   // 展开文章之间的引用连线
   const artSet = new Set(store.articles.filter((a) => !a.deleted).map((a) => a.id))
   for (const b of bubbles) {
-    if (!expanded.value.has(b.tag)) continue
+    if (!expanded.value.includes(b.tag)) continue
     for (const aid of b.ids) {
       const a = store.articles.find((x) => x.id === aid)
       if (!a || a.deleted) continue
@@ -136,15 +136,16 @@ function layout() {
 }
 
 function toggleTag(tag: string) {
-  const next = new Set(expanded.value)
-  if (next.has(tag)) next.delete(tag)
-  else next.add(tag)
-  expanded.value = next
+  if (expanded.value.includes(tag)) {
+    expanded.value = expanded.value.filter((t) => t !== tag)
+  } else {
+    expanded.value = [...expanded.value, tag]
+  }
   layout()
 }
 
 function collapseAll() {
-  expanded.value = new Set()
+  expanded.value = []
   layout()
 }
 
