@@ -108,8 +108,8 @@ const MilkdownCore = defineComponent({
           // Crepe 绕过 remark 流水线，手动扫描转换 wikilink
           setTimeout(() => {
             const ev = (window as any).__milkdownView as EditorView | undefined
-            if (ev) scanConvertWikilinks(ev)
-          }, 200)
+            if (ev && ev.state) scanConvertWikilinks(ev)
+          }, 500)
         }
       },
     )
