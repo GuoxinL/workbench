@@ -90,6 +90,15 @@ function layout() {
         r: 12,
         color: hashColor(a.id),
       })
+      // 暴露调试信息
+      ;(window as any).__graphDebug = {
+        expandedTags: [...expanded.value],
+        bubbles: bubbles.map(b => ({ tag: b.tag, ids: b.ids })),
+        allArtIds: allArts.map(a => a.id),
+        nsLen: ns.length,
+        lastAid: aid,
+        found: !!a,
+      }
     }
   }
 
