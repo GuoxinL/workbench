@@ -40,7 +40,7 @@ function manualSync() {
   padding: 4px 12px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: #fff;
+  background: var(--card-bg);
   cursor: pointer;
 }
 .dot {

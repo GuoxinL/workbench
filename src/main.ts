@@ -5,6 +5,7 @@ import { router } from './router'
 import './styles/variables.css'
 import './styles/base.css'
 import '@milkdown/theme-nord/style.css'
+import './styles/element-dark.css'
 
 const app = createApp(App)
 app.use(createPinia())

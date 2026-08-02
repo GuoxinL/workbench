@@ -44,6 +44,22 @@ const { schedule, flush } = useAutoSave(() => {
   if (isDirty()) doSave()
 }, 700)
 
+// 编辑态标识：编辑器聚焦时高亮文章框；离开时 flush 保存并提示「已保存」
+const editing = ref(false)
+function onEditorFocusIn() {
+  editing.value = true
+}
+function onEditorFocusOut(e: FocusEvent) {
+  // 焦点仍在本编辑区内（如标题→正文）不视为离开
+  const rt = e.relatedTarget as HTMLElement | null
+  if (rt && (e.currentTarget as HTMLElement).contains(rt)) return
+  editing.value = false
+  if (isDirty()) {
+    flush()
+    ElMessage.success('已保存')
+  }
+}
+
 function doSave() {
   const a = props.article
   if (!a || !isDirty()) return
@@ -219,7 +235,14 @@ const fromTodoTitle = computed(() => {
 <template>
   <section v-if="article" class="editor">
     <!-- 中栏：编辑区 -->
-    <div class="editor-scroll" @click="onWikilinkClick" @contextmenu="onEditorContextMenu">
+    <div
+      class="editor-scroll"
+      :class="{ editing }"
+      @click="onWikilinkClick"
+      @contextmenu="onEditorContextMenu"
+      @focusin="onEditorFocusIn"
+      @focusout="onEditorFocusOut"
+    >
       <div class="bar">
         <input
           v-model="draftTitle"
@@ -316,6 +339,14 @@ const fromTodoTitle = computed(() => {
   overflow-y: auto;
   padding: 16px 24px 120px;
   min-width: 0;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+/* 编辑态：文章框高亮，明确「正在输入」 */
+.editor-scroll.editing {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-weak);
 }
 
 .right-side {
@@ -387,7 +418,7 @@ const fromTodoTitle = computed(() => {
 .help {
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--card-bg);
   padding: 4px 12px;
   font-size: 13px;
   margin-bottom: 12px;
@@ -407,7 +438,8 @@ const fromTodoTitle = computed(() => {
   height: 40px;
   border-radius: 50%;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card-bg);
+  color: var(--fg);
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   cursor: pointer;
   font-size: 16px;

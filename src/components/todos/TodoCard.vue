@@ -79,7 +79,7 @@ async function remove() {
   gap: 10px;
   align-items: flex-start;
   padding: 12px 14px;
-  background: #fff;
+  background: var(--card-bg);
   border: 1px solid var(--line);
   border-left: 4px solid var(--c);
   border-radius: 10px;
@@ -95,7 +95,7 @@ async function remove() {
   margin-top: 2px;
   border-radius: 50%;
   border: 2px solid var(--c);
-  background: #fff;
+  background: var(--card-bg);
   cursor: pointer;
 }
 .check.on {

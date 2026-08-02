@@ -299,7 +299,7 @@ export default defineComponent({
   padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--card-bg);
   margin-bottom: 10px;
 }
 /* 复用 Element Plus 按钮外观，仅做间距统一（去掉相邻按钮的默认外边距） */

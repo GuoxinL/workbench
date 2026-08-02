@@ -92,7 +92,7 @@ const style = computed(() => ({
   position: fixed;
   z-index: 9999;
   min-width: 200px;
-  background: #fff;
+  background: var(--card-bg);
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.12);
@@ -131,7 +131,7 @@ const style = computed(() => ({
   left: 100%;
   top: 0;
   min-width: 160px;
-  background: #fff;
+  background: var(--card-bg);
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.12);

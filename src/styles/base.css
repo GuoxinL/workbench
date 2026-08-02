@@ -78,5 +78,14 @@ a.wikilink.missing {
   font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   line-height: 1.8;
 }
+/* 暗色下覆写 nord 浅色编辑器底/字色 */
+:root.dark .milkdown {
+  background: var(--bg);
+  color: var(--fg);
+}
+:root.dark .milkdown .ProseMirror {
+  background: var(--bg);
+  color: var(--fg);
+}
 .milkdown h2 { font-size: 1.5em; margin: 1em 0 0.5em; }
 .milkdown h3 { font-size: 1.25em; margin: 0.8em 0 0.4em; }

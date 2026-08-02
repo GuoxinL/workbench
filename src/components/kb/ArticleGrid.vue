@@ -6,6 +6,7 @@ import { buildGraph } from '@/lib/links'
 import { extractExcerpt, extractFirstImage, safeImageUrl } from '@/lib/markdown/excerpt'
 import { COLOR_MAP } from '@/lib/colors'
 import TagCloud from './TagCloud.vue'
+import Pagination from '@/components/common/Pagination.vue'
 
 const emit = defineEmits<{ select: [string]; create: [] }>()
 const store = useDataStore()
@@ -30,6 +31,15 @@ const list = computed(() => {
 
 const featured = computed(() => list.value[0] ?? null)
 const rest = computed(() => list.value.slice(1))
+
+// 分页：每页 20 条，作用于 hero 之外的列表；筛选/搜索后回到第 1 页
+const PAGE_SIZE = 20
+const page = ref(1)
+const totalPages = computed(() => Math.max(1, Math.ceil(rest.value.length / PAGE_SIZE)))
+const pagedRest = computed(() =>
+  rest.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE),
+)
+watch([() => query.value, () => activeTag.value], () => (page.value = 1))
 
 function fmt(ts: number): string {
   const d = new Date(ts)
@@ -94,7 +104,7 @@ function onTagClick(tag: string) {
       <!-- 其余列表（B 风格） -->
       <div class="rest">
         <div
-          v-for="n in rest"
+          v-for="n in pagedRest"
           :key="n.id"
           class="card"
           @click="emit('select', n.id)"
@@ -117,6 +127,8 @@ function onTagClick(tag: string) {
           </div>
         </div>
       </div>
+
+      <Pagination v-model:page="page" :total-pages="totalPages" />
     </template>
   </section>
 </template>

@@ -26,6 +26,7 @@ declare module 'vue' {
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
     LinksPanel: typeof import('./components/kb/LinksPanel.vue')['default']
     MilkdownEditor: typeof import('./components/kb/MilkdownEditor.vue')['default']
+    Pagination: typeof import('./components/common/Pagination.vue')['default']
     RelatedPanel: typeof import('./components/kb/RelatedPanel.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

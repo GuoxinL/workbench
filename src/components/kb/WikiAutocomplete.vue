@@ -184,7 +184,7 @@ const stylePos = computed(() => ({ left: `${pos.value.left}px`, top: `${pos.valu
 .ac {
   position: fixed;
   z-index: 1000;
-  background: #fff;
+  background: var(--card-bg);
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
