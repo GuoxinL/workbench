@@ -336,21 +336,36 @@ const fromTodoTitle = computed(() => {
       </div>
 
       <details class="help">
-        <summary>Markdown / 双链引用语法帮助</summary>
+        <summary>Markdown 语法帮助</summary>
         <div class="help-body">
-          <p class="help-h">Markdown：</p>
+          <p class="help-h">标题</p>
           <ul>
-            <li><code># 标题</code> / <code>## 小标题</code> 分级标题</li>
-            <li><code>**粗体**</code>、<code>*斜体*</code>、<code>`行内代码`</code></li>
-            <li><code>- 列表项</code> / <code>1. 列表项</code></li>
-            <li><code>![[图片说明]](url)</code> 图片</li>
+            <li><code># 一级标题</code> / <code>## 二级标题</code> / <code>### 三级标题</code></li>
           </ul>
-          <p class="help-h">双链引用：</p>
+          <p class="help-h">文字格式</p>
           <ul>
-            <li><code>[[文章标题]]</code> 引用文章</li>
-            <li><code>[[文章标题|别名]]</code> 引用并显示别名</li>
+            <li><code>**粗体**</code>、<code>*斜体*</code>、<code>~~删除线~~</code>、<code>`行内代码`</code></li>
+            <li><code>==高亮==</code> 文字高亮</li>
           </ul>
-          <p class="help-h">标签：</p>
+          <p class="help-h">段落与块</p>
+          <ul>
+            <li><code>- 无序列表</code> / <code>1. 有序列表</code></li>
+            <li><code>- [ ] 待办</code> / <code>- [x] 已完成</code></li>
+            <li><code>> 引用块</code></li>
+            <li><code>```</code> 围栏代码块（可带语言 <code>```js</code>）</li>
+            <li><code>---</code> 分割线</li>
+          </ul>
+          <p class="help-h">链接与图片</p>
+          <ul>
+            <li><code>[文字](https://url)</code> 外部链接</li>
+            <li><code>[[文章标题]]</code> 双链引用文章 · <code>[[文章标题|别名]]</code> 显示别名</li>
+            <li><code>![描述](图片url)</code> 插入图片</li>
+          </ul>
+          <p class="help-h">表格</p>
+          <ul>
+            <li><code>| 列1 | 列2 |</code> + <code>|---|---|</code> + 数据行</li>
+          </ul>
+          <p class="help-h">标签</p>
           <ul>
             <li>上方标签区输入框回车即可添加标签</li>
           </ul>
