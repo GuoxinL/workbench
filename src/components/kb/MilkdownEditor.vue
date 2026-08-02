@@ -298,9 +298,10 @@ export default defineComponent({
   gap: 4px;
   padding: 6px 8px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--card-bg);
   margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
 }
 /* 复用 Element Plus 按钮外观，仅做间距统一（去掉相邻按钮的默认外边距） */
 .md-toolbar :deep(.el-button) {

@@ -58,14 +58,17 @@ window.addEventListener('beforeunload', () => {
   border: 1px solid var(--line);
   background: var(--card-bg);
   color: var(--fg);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   width: 32px;
   height: 32px;
   cursor: pointer;
   font-size: 16px;
   line-height: 1;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s, color 0.15s;
 }
 .gear:hover {
   border-color: var(--brand);
+  color: var(--brand);
 }
 </style>

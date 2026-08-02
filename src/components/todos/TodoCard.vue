@@ -82,8 +82,14 @@ async function remove() {
   background: var(--card-bg);
   border: 1px solid var(--line);
   border-left: 4px solid var(--c);
-  border-radius: 10px;
+  border-radius: var(--radius);
   margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.18s, transform 0.18s;
+}
+.card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 .card.done {
   opacity: 0.62;

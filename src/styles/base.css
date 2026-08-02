@@ -27,16 +27,30 @@ body {
 
 .brand {
   font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 0.5px;
+  color: var(--brand);
 }
 
+.tabs {
+  display: flex;
+  gap: 4px;
+}
 .tabs a {
-  margin-left: 14px;
   color: var(--muted);
   text-decoration: none;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  transition: background 0.15s, color 0.15s;
 }
-
+.tabs a:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
 .tabs a.on {
   color: var(--brand);
+  background: var(--brand-weak);
   font-weight: 600;
 }
 
@@ -73,19 +87,181 @@ a.wikilink.missing {
   border-bottom-color: #ef4444;
 }
 
-/* Milkdown 编辑器全局微调 */
+/* ── 文章正文排版：参考 Typora whitey 主题（书卷风） ──
+   Vollkorn 多数环境未装，退到 Palatino/Georgia + 中文衬线（PingFang SC 走系统衬线回退）。
+   仅作用于 .milkdown 内容区；编辑器外壳/顶栏/卡片不受影响。 */
 .milkdown {
-  font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  line-height: 1.8;
+  font-family: 'Vollkorn', Palatino, 'PingFang SC', 'Source Han Serif SC', Georgia, serif;
+  font-size: 19px;
+  line-height: 1.53;
+  color: #333;
+  background: #fefefe;
+  text-align: justify;
+  -webkit-hyphens: auto;
+  hyphens: auto;
+  padding: 6px 4px;
 }
-/* 暗色下覆写 nord 浅色编辑器底/字色 */
-:root.dark .milkdown {
-  background: var(--bg);
-  color: var(--fg);
+.milkdown .ProseMirror {
+  background: #fefefe;
+  color: #333;
 }
+/* 标题：居中、正常字重；h2 下方 100px 居中细线；h3 斜体 */
+.milkdown h1 {
+  font-size: 3em;
+  font-weight: normal;
+  text-align: center;
+  margin: 1.6em 0 0.5em;
+  line-height: 1.2;
+}
+.milkdown h2 {
+  font-size: 1.6em;
+  font-weight: normal;
+  text-align: center;
+  margin: 2em 0 0.83em;
+  position: relative;
+}
+.milkdown h2::after {
+  content: '';
+  display: block;
+  width: 100px;
+  height: 1px;
+  background: #2f2f2f;
+  margin: 0.3em auto 0;
+}
+.milkdown h3 {
+  font-size: 1.2em;
+  font-weight: normal;
+  font-style: italic;
+  text-align: center;
+  margin: 3em 0 0.5em;
+}
+.milkdown h1 + h2,
+.milkdown h2 + h3 {
+  margin-top: 0.83em;
+}
+/* 段落 */
+.milkdown p {
+  margin: 0 0 0.9em;
+}
+/* 列表 */
+.milkdown ul {
+  list-style: square;
+  padding-left: 1.2em;
+  margin: 0 0 0.9em;
+}
+.milkdown ol {
+  padding-left: 1.2em;
+  margin: 0 0 0.9em;
+}
+.milkdown li {
+  margin: 3px 0;
+}
+/* 引用 */
+.milkdown blockquote {
+  margin: 0 0 1em 1em;
+  padding-left: 1em;
+  border-left: 1px solid #ddd;
+  color: #555;
+  font-style: normal;
+}
+/* 代码：行内 + 围栏 */
+.milkdown code,
+.milkdown pre {
+  font-family: 'Consolas', 'Menlo', 'Monaco', monospace;
+  font-size: 0.9em;
+}
+.milkdown code {
+  background: #f5f5f5;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: #c7254e;
+}
+.milkdown pre {
+  background: #fefefe;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px 14px 8px;
+  margin: 0 0 1.5em;
+  overflow-x: auto;
+}
+.milkdown pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+  font-size: 0.95em;
+}
+/* 链接（非双链） */
+.milkdown a:not(.wikilink) {
+  color: #2484c1;
+  text-decoration: none;
+}
+.milkdown a:not(.wikilink):hover {
+  text-decoration: underline;
+}
+/* 分割线 */
+.milkdown hr {
+  border: 0;
+  border-top: 1px solid #ddd;
+  margin: 2em 0;
+  height: 0;
+}
+/* 表格 */
+.milkdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 1.33em;
+}
+.milkdown th,
+.milkdown td {
+  border-top: 1px solid #ddd;
+  padding: 8px;
+  line-height: 1.33;
+  vertical-align: top;
+}
+.milkdown thead th {
+  font-weight: bold;
+  vertical-align: bottom;
+  border-bottom: 1px solid #ddd;
+}
+.milkdown thead tr:first-child th,
+.milkdown thead tr:first-child td {
+  border-top: 0;
+}
+/* 图片 */
+.milkdown img {
+  max-width: 100%;
+  height: auto;
+  border: none;
+}
+
+/* 暗色：whitey 的深色改编（保持书卷结构，换深底浅字） */
+:root.dark .milkdown,
 :root.dark .milkdown .ProseMirror {
   background: var(--bg);
-  color: var(--fg);
+  color: #d6d6d6;
 }
-.milkdown h2 { font-size: 1.5em; margin: 1em 0 0.5em; }
-.milkdown h3 { font-size: 1.25em; margin: 0.8em 0 0.4em; }
+:root.dark .milkdown code {
+  background: #2a2a2a;
+  color: #e0a0b0;
+}
+:root.dark .milkdown pre {
+  background: var(--bg);
+  border-color: var(--line);
+}
+:root.dark .milkdown blockquote {
+  border-left-color: var(--line);
+  color: #aaa;
+}
+:root.dark .milkdown hr {
+  border-top-color: var(--line);
+}
+:root.dark .milkdown th,
+:root.dark .milkdown td {
+  border-top-color: var(--line);
+}
+:root.dark .milkdown thead th {
+  border-bottom-color: var(--line);
+}
+:root.dark .milkdown h2::after {
+  background: #d6d6d6;
+}

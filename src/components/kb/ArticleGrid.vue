@@ -150,20 +150,31 @@ function onTagClick(tag: string) {
   flex: 1;
   padding: 8px 14px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   outline: none;
   font-size: 14px;
+  background: var(--card-bg);
+  color: var(--fg);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-.search:focus { border-color: var(--brand); }
+.search:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-weak);
+}
 .new-btn {
   padding: 8px 16px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--brand);
   color: #fff;
   cursor: pointer;
   font-size: 14px;
   flex: none;
+  box-shadow: var(--shadow-sm);
+  transition: background 0.15s;
+}
+.new-btn:hover {
+  background: var(--brand-strong);
 }
 
 .empty { text-align: center; padding: 60px 0; font-size: 14px; }
@@ -172,12 +183,16 @@ function onTagClick(tag: string) {
 .hero {
   cursor: pointer;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
   margin-bottom: 24px;
-  transition: box-shadow 0.15s;
+  box-shadow: var(--shadow-md);
+  transition: box-shadow 0.18s, transform 0.18s;
 }
-.hero:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+.hero:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
 .hero-img {
   width: 100%;
   height: 220px;
@@ -206,11 +221,15 @@ function onTagClick(tag: string) {
   gap: 14px;
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius);
   cursor: pointer;
-  transition: box-shadow 0.15s;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.18s, transform 0.18s;
 }
-.card:hover { box-shadow: 0 1px 8px rgba(0,0,0,0.06); }
+.card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
 
 .card-thumb {
   width: 120px;

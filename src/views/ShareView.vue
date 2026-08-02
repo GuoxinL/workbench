@@ -71,10 +71,16 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* whitey 阅读页：居中 960px，正文样式由全局 .milkdown 提供 */
 .share {
-  max-width: 760px;
+  max-width: 960px;
   margin: 0 auto;
-  padding: 24px 16px 80px;
+  padding: 40px 16px 80px;
+}
+@media only screen and (min-width: 1400px) {
+  .share {
+    max-width: 1100px;
+  }
 }
 .title {
   font-size: 28px;
@@ -96,33 +102,5 @@ onMounted(async () => {
   border-radius: 999px;
   font-size: 12px;
 }
-.content {
-  line-height: 1.8;
-}
-.content :deep(h1) { font-size: 1.8em; margin: 1em 0 0.5em; }
-.content :deep(h2) { font-size: 1.5em; margin: 1em 0 0.5em; }
-.content :deep(h3) { font-size: 1.25em; margin: 0.8em 0 0.4em; }
-.content :deep(pre) {
-  background: var(--bg);
-  padding: 12px 14px;
-  border-radius: 8px;
-  overflow-x: auto;
-}
-.content :deep(code) {
-  font-family: ui-monospace, monospace;
-  background: var(--bg);
-  padding: 0 4px;
-  border-radius: 4px;
-}
-.content :deep(pre code) { background: none; padding: 0; }
-.content :deep(blockquote) {
-  border-left: 3px solid var(--brand);
-  margin: 0;
-  padding: 4px 14px;
-  color: var(--muted);
-}
-.content :deep(img) { max-width: 100%; border-radius: 8px; }
-.content :deep(table) { border-collapse: collapse; width: 100%; }
-.content :deep(th), .content :deep(td) { border: 1px solid var(--line); padding: 6px 10px; }
 .muted { color: var(--muted); }
 </style>
