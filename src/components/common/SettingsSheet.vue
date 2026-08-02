@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import type { Config } from '@/types'
 import { useDataStore } from '@/stores/data'
-import { testConnection, runDiagnose, type DiagStep } from '@/services/github/diagnose'
+import { runDiagnose, runPublicDiagnose, defaultPublicRepo, type DiagStep } from '@/services/github/diagnose'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
@@ -14,28 +14,31 @@ const visible = computed({
 })
 
 const cfg = ref<Config>(store.getConfig())
+// 打开时：若 publicRepo 为空，默认填 <owner>/workbench-public
 watch(visible, (v) => {
-  if (v) cfg.value = store.getConfig()
+  if (v) {
+    cfg.value = store.getConfig()
+    if (!cfg.value.publicRepo) cfg.value.publicRepo = defaultPublicRepo(cfg.value)
+  }
 })
 
 const steps = ref<DiagStep[]>([])
+const pubSteps = ref<DiagStep[]>([])
 const diagRunning = ref(false)
 
 const repoValid = computed(() => /^[^/\s]+\/[^/\s]+$/.test(cfg.value.repo))
 const canSave = computed(() => cfg.value.enabled && repoValid.value && !!cfg.value.token)
 
+/** 测试连接（融合私有库 + 公开库诊断）：跑两套诊断并显示步骤列表 */
 async function test() {
-  const r = await testConnection(cfg.value)
-  if (r.ok && r.canPush) ElMessage.success('连接成功，具备写权限')
-  else if (r.ok) ElMessage.warning('连接成功，但令牌无写权限')
-  else ElMessage.error(`${r.message}`)
-}
-
-async function diagnose() {
   diagRunning.value = true
   steps.value = []
+  pubSteps.value = []
   try {
     steps.value = await runDiagnose(cfg.value)
+    pubSteps.value = await runPublicDiagnose(cfg.value)
+    const ok = steps.value.length && steps.value.every((s) => s.ok) && pubSteps.value.every((s) => s.ok)
+    if (ok) ElMessage.success('私有库 + 公开库诊断全部通过')
   } finally {
     diagRunning.value = false
   }
@@ -48,6 +51,8 @@ function save() {
   }
   // 钳制轮询间隔 5–300s（S4）
   cfg.value.poll = Math.min(300, Math.max(5, Number(cfg.value.poll) || 20))
+  // publicRepo 为空时存默认值
+  if (!cfg.value.publicRepo) cfg.value.publicRepo = defaultPublicRepo(cfg.value)
   store.saveConfig({ ...cfg.value })
   ElMessage.success('已保存，正在同步…')
   visible.value = false
@@ -95,12 +100,19 @@ function exportBackup() {
 
       <div class="actions">
         <el-button :loading="diagRunning" @click="test">测试连接</el-button>
-        <el-button :loading="diagRunning" @click="diagnose">五步诊断</el-button>
         <el-button @click="exportBackup">导出备份</el-button>
       </div>
 
       <ul v-if="steps.length" class="diag">
+        <li class="diag-title">私有库 · {{ cfg.repo }}</li>
         <li v-for="s in steps" :key="s.name" :class="{ ok: s.ok, fail: !s.ok }">
+          <span class="mark">{{ s.ok ? '✓' : '✗' }}</span>
+          <b>{{ s.name }}</b> —— {{ s.detail }}
+        </li>
+      </ul>
+      <ul v-if="pubSteps.length" class="diag">
+        <li class="diag-title">公开库 · {{ cfg.publicRepo || defaultPublicRepo(cfg) }}</li>
+        <li v-for="s in pubSteps" :key="s.name" :class="{ ok: s.ok, fail: !s.ok }">
           <span class="mark">{{ s.ok ? '✓' : '✗' }}</span>
           <b>{{ s.name }}</b> —— {{ s.detail }}
         </li>
@@ -147,6 +159,14 @@ function exportBackup() {
 .diag li {
   font-size: 13px;
   padding: 4px 0;
+}
+.diag .diag-title {
+  font-weight: 700;
+  color: var(--brand);
+  font-size: 12px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
 }
 .diag .ok {
   color: #15803d;

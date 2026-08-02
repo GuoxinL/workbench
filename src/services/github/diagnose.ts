@@ -73,6 +73,25 @@ export async function testConnection(config: Config): Promise<ConnResult> {
   return { ok: true, message: '连接成功', canPush: !!data?.permissions?.push }
 }
 
+/** 公开镜像仓库默认名：<owner>/workbench-public（从私有 repo 推导 owner） */
+export function defaultPublicRepo(config: Config): string {
+  const owner = (config.repo || '').split('/')[0]
+  return owner ? `${owner}/workbench-public` : ''
+}
+
+/** 公开仓库诊断：对公开镜像库跑与私有库相同的诊断流程（连接 + 写权限）。 */
+export async function runPublicDiagnose(config: Config): Promise<DiagStep[]> {
+  const publicRepo = (config.publicRepo || '').trim() || defaultPublicRepo(config)
+  if (!/^[^/\s]+\/[^/\s]+$/.test(publicRepo)) {
+    return [{ name: '公开仓库配置', ok: false, detail: 'publicRepo 格式应为 owner/repo（默认 owner/workbench-public）' }]
+  }
+  const mirrorCfg: Config = { ...config, repo: publicRepo }
+  const steps = await runDiagnose(mirrorCfg)
+  // 首步标注目标仓库，便于区分
+  if (steps[0]) steps[0] = { ...steps[0], name: `公开仓库 ${publicRepo}` }
+  return steps
+}
+
 /** S18：五步诊断——逐步返回步骤状态，失败即中断。 */
 export async function runDiagnose(config: Config): Promise<DiagStep[]> {
   const steps: DiagStep[] = []
