@@ -216,11 +216,11 @@ describe('MilkdownEditor 常驻格式工具栏命令', () => {
     })
     expect(linkHref).toBe('https://ex.com/x.png')
 
-    // 11) 图片：点击「插入图片」在光标处插入 image 节点
+    // 11) 图片：工具栏按钮改为打开 ImageDialog，此处直接测同源 insertImage
     resetDoc(view, '图片测试。')
     setCursor(1)
     await new Promise((r) => setTimeout(r, 30))
-    findBtn(toolbar!, '插入图片').click()
+    ;(window as any).__milkdownApi.insertImageNode('https://ex.com/x.png')
     await new Promise((r) => setTimeout(r, 50))
     let imgSrc: string | null = null
     view.state.doc.descendants((n: any) => {

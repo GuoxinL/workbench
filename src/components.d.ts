@@ -27,6 +27,7 @@ declare module 'vue' {
     ElSegmented: typeof import('element-plus/es')['ElSegmented']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
+    ImageDialog: typeof import('./components/kb/ImageDialog.vue')['default']
     LinkDialog: typeof import('./components/kb/LinkDialog.vue')['default']
     LinkPopover: typeof import('./components/kb/LinkPopover.vue')['default']
     LinksPanel: typeof import('./components/kb/LinksPanel.vue')['default']

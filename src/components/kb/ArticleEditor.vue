@@ -13,7 +13,6 @@ import LinksPanel from './LinksPanel.vue'
 import EditorContextMenu from './EditorContextMenu.vue'
 import type { MenuAction } from './EditorContextMenu.vue'
 import LinkPopover, { type LinkKind } from './LinkPopover.vue'
-import { compressImage } from '@/lib/image'
 import { openConfirm, openTableDialog } from '@/composables/useDialog'
 
 const props = defineProps<{ article: Article | null }>()
@@ -187,18 +186,8 @@ async function handleMenuAction(key: string, _a: MenuAction) {
   const api = (window as any).__milkdownApi
   if (!api) return
   if (key === 'image') {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/*'
-    input.onchange = async () => {
-      const file = input.files?.[0]
-      if (!file) return
-      try {
-        const dataUri = await compressImage(file)
-        api.insertImageNode(dataUri)
-      } catch { /* ignore */ }
-    }
-    input.click()
+    // 与工具栏同源：都走 ImageDialog（URL 下载压缩 / 本地文件）
+    api.cmd('image')
   } else if (key === 'table') {
     const r = await openTableDialog()
     if (!r) return

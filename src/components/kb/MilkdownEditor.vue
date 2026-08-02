@@ -27,6 +27,7 @@ import { ElButton, ElIcon } from 'element-plus'
 import { List, Link, Picture, Minus } from '@element-plus/icons-vue'
 import { runCommand, insertImage, insertTable, insertLinkMark, insertWikilink, type CmdType } from './editorCommands'
 import LinkDialog from './LinkDialog.vue'
+import ImageDialog from './ImageDialog.vue'
 
 // ── 工具栏内联 SVG 图标（与 EP 图标同风格：1em、stroke currentColor）──
 const SVG_PROPS = {
@@ -232,9 +233,14 @@ const MilkdownCore = defineComponent({
         linkOpen.value = true // 链接由 LinkDialog 统一处理（双链/锚点/外部）
         return
       }
+      if (type === 'image') {
+        imageOpen.value = true // 图片由 ImageDialog 统一处理（URL 下载压缩 / 本地文件）
+        return
+      }
       runCommand(ed, type as CmdType)
     }
     const linkOpen = ref(false)
+    const imageOpen = ref(false)
     const toolbarButtons = () => {
       type BtnDef =
         | { t: string; title: string; icon: any }
@@ -282,6 +288,12 @@ const MilkdownCore = defineComponent({
           ? h(LinkDialog, {
               editor: getEditor(),
               onClose: () => (linkOpen.value = false),
+            })
+          : null,
+        imageOpen.value
+          ? h(ImageDialog, {
+              editor: getEditor(),
+              onClose: () => (imageOpen.value = false),
             })
           : null,
       ].filter(Boolean) as any[]
