@@ -133,22 +133,24 @@ describe('MilkdownEditor 右键菜单同源命令（与工具栏一致）', () =
     })
     expect(imgSrc).toBe('data:image/png;base64,AAA')
 
-    // 9) 表格：3 行 2 列，首行为表头（table_header）
+    // 9) 表格：3 行 2 列，首行为表头（createTable 用 table_header_row + table_header）
     resetDoc(view, '表格前后。')
     setCursor(view, 1)
     api.insertTableNode(3, 2)
     await new Promise((r) => setTimeout(r, 30))
-    let rows = 0
+    let bodyRows = 0
+    let headerRows = 0
     let cells = 0
     let headerCells = 0
     view.state.doc.descendants((n: any) => {
-      if (n.type.name === 'table_row') rows++
+      if (n.type.name === 'table_row') bodyRows++
+      if (n.type.name === 'table_header_row') headerRows++
       if (n.type.name === 'table_cell') cells++
       if (n.type.name === 'table_header') headerCells++
     })
-    expect(rows).toBe(3)
+    expect(bodyRows + headerRows).toBe(3) // 1 表头行 + 2 正文行
     expect(cells + headerCells).toBe(6) // 3 行 × 2 列
-    expect(headerCells).toBe(2) // 首行 2 个表头
+    expect(headerCells).toBe(2) // 表头行 2 个 table_header
 
     window.prompt = origPrompt
     wrapper.unmount()

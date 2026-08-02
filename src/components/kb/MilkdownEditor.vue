@@ -24,6 +24,7 @@ import { ElButton, ElIcon } from 'element-plus'
 // 无序列表/引用/代码块/链接/图片/分割线用 EP 现成图标；加粗/斜体/行内代码/标题
 // 在 EP 中无对应图标，用同风格的内联 SVG 绘制，保证工具栏视觉统一。
 import { List, Document, Link, Picture, ChatLineSquare, Minus, Sort } from '@element-plus/icons-vue'
+import { runCommand, insertImage, insertTable, type CmdType } from './editorCommands'
 
 // ── 工具栏内联 SVG 图标（与 EP 图标同风格：1em、stroke currentColor）──
 const SVG_PROPS = {
@@ -99,27 +100,9 @@ const MilkdownCore = defineComponent({
     let scanning = true
     // 编辑器渲染完成后通知父组件重跑双链缺失标记等后处理
     const onReady = () => emit('ready')
-    // 编辑器视图实例：工具栏命令由此操作文档（就绪前为 null，工具栏隐藏）
+    // 编辑器视图实例：仅用于就绪门控（工具栏渲染条件）与暴露给测试。
+    // 命令派发不再依赖缓存视图——统一走 editorCommands 里的 ed.action(commandsCtx)。
     const editorView = ref<EditorView | null>(null)
-    // 实时获取当前 EditorView：ed.action 在编辑器创建早期捕获的 view 可能是预挂载的
-    // 过渡视图，milkdown 之后会换成真正渲染的视图。若命令派发用缓存的 editorView.value
-    // 会指向陈旧视图，对其 dispatch 时 tr.before 与渲染视图的 state.doc 不符而抛
-    // 「Applying a mismatched transaction」。故派发时通过 getEditor().action 重新取当前视图。
-    const getLiveView = (): any => {
-      const ed = getEditor()
-      if (ed) {
-        try {
-          let v: any = null
-          ed.action((ctx: any) => {
-            v = ctx.get(editorViewCtx)
-          })
-          if (v) return v
-        } catch {
-          /* 忽略，回退到缓存值 */
-        }
-      }
-      return editorView.value
-    }
 
     useEditor((root) =>
       Editor.make()
@@ -179,45 +162,17 @@ const MilkdownCore = defineComponent({
         ;(window as any).__milkdownView = view
         // 供常驻工具栏命令操作文档
         editorView.value = view as any
-        // 暴露同源命令 API 给右键菜单：右键菜单与工具栏复用完全相同的
-        // ProseMirror 结构化命令（cmd / insertImageNode / insertTableNode），
-        // 避免右键菜单各自用 insertText 插入原始 markdown 导致「不好使」。
+        // 暴露同源命令 API 给右键菜单：右键菜单与工具栏复用 editorCommands 里的
+        // 同一组官方 commandsCtx 调用（cmd / insertImageNode / insertTableNode）。
         ;(window as any).__milkdownApi = {
           cmd,
           insertImageNode: (src: string, alt = '') => {
-            const v: any = getLiveView()
-            if (!v) return
-            const img = v.state.schema.nodes.image
-            if (!img) return
-            v.dispatch(v.state.tr.replaceSelectionWith(img.create({ src, alt })))
-            v.focus()
+            const ed = getEditor()
+            if (ed) insertImage(ed, src, alt)
           },
           insertTableNode: (rows: number, cols: number) => {
-            const v: any = getLiveView()
-            if (!v) return
-            const sch = v.state.schema
-            const table = sch.nodes.table
-            const tableRow = sch.nodes.table_row
-            const tableCell = sch.nodes.table_cell
-            const tableHeader = sch.nodes.table_header
-            const paragraph = sch.nodes.paragraph
-            if (!table || !tableRow || !tableCell || !paragraph) return
-            const makeCell = (header: boolean) =>
-              (header && tableHeader ? tableHeader : tableCell).create(
-                null,
-                paragraph.create(),
-              )
-            const makeRow = (header: boolean) =>
-              tableRow.create(
-                null,
-                Array.from({ length: cols }, () => makeCell(header)),
-              )
-            const tableNode = table.create(
-              null,
-              Array.from({ length: rows }, (_, i) => makeRow(i === 0)),
-            )
-            v.dispatch(v.state.tr.replaceSelectionWith(tableNode))
-            v.focus()
+            const ed = getEditor()
+            if (ed) insertTable(ed, rows, cols)
           },
         }
         scanning = true
@@ -234,155 +189,12 @@ const MilkdownCore = defineComponent({
     })
 
     // ── 常驻 Markdown 格式工具栏 ──
-    // 直接用视图自身的 view.state.tr 操作文档：所有事务都源自同一个 view.state，
-    // 不会出现 prosemirror-commands / prosemirror-schema-list 跨 prosemirror-state
-    // 副本导致的「Applying a mismatched transaction」。mark/node 类型从
-    // view.state.schema 动态获取，链接/图片用 prompt 收集用户输入。
-    // 注意：view.focus() 必须在 dispatch 之后调用——focus 会刷新 view.state.doc，
-    // 若在构建事务前调用，会导致 tr.before 与当前 view.state.doc 不符而派发失败。
-    const toggleMarkByName = (name: string) => {
-      const view = getLiveView()
-      if (!view) return
-      const markType = view.state.schema.marks[name]
-      if (!markType) return
-      const { state } = view
-      const { from, to, empty } = state.selection
-      const tr = state.tr
-      if (empty) {
-        // 光标处：切换 stored mark（影响后续输入）
-        const marks = state.storedMarks || state.selection.$from.marks()
-        const has = markType.isInSet(marks)
-        view.dispatch(
-          tr.setStoredMarks(has ? markType.removeFromSet(marks) : [markType.create()]),
-        )
-        view.focus()
-        return
-      }
-      const has = state.doc.rangeHasMark(from, to, markType)
-      if (has) tr.removeMark(from, to, markType)
-      else tr.addMark(from, to, markType.create())
-      view.dispatch(tr)
-      view.focus()
-    }
-    // 将选区覆盖的文本块整体改为指定 nodeType（setBlockType 的 tr 版实现）
-    const setBlockTypeTo = (nodeType: any, attrs: Record<string, unknown> | null) => {
-      const view = getLiveView()
-      if (!view) return
-      const { state } = view
-      const { from, to } = state.selection
-      const tr = state.tr
-      let changed = false
-      state.doc.nodesBetween(from, to, (node: any, pos: number) => {
-        if (!node.isTextblock) return
-        if (node.hasMarkup(nodeType, attrs || undefined)) return
-        tr.setNodeMarkup(pos, nodeType, attrs || undefined)
-        changed = true
-      })
-      if (changed) view.dispatch(tr)
-      view.focus()
-    }
-    const toggleHeading = (level: number) => {
-      const view = getLiveView()
-      if (!view) return
-      const { state } = view
-      const { $from, $to } = state.selection
-      let already = false
-      state.doc.nodesBetween($from.pos, $to.pos, (n: any) => {
-        if (n.type.name === 'heading' && n.attrs.level === level) already = true
-      })
-      if (already) setBlockTypeTo(state.schema.nodes.paragraph, null)
-      else setBlockTypeTo(state.schema.nodes.heading, { level })
-    }
-    // 用 tr.wrap 包裹选区文本块（wrap 为从外到内的节点数组）
-    const wrapWith = (wrap: any[]) => {
-      const view = getLiveView()
-      if (!view) return
-      const { state } = view
-      const { $from, $to } = state.selection
-      const range = $from.blockRange($to)
-      if (!range) return
-      view.dispatch(state.tr.wrap(range, wrap))
-      view.focus()
-    }
-    const wrapList = (name: string) => {
-      const view = getLiveView()
-      if (!view) return
-      const list = view.state.schema.nodes[name]
-      const item = view.state.schema.nodes.list_item
-      if (!list || !item) return
-      wrapWith([{ type: list }, { type: item }])
-    }
-    const wrapBlockquote = () => {
-      const view = getLiveView()
-      if (!view) return
-      const bq = view.state.schema.nodes.blockquote
-      if (!bq) return
-      wrapWith([{ type: bq }])
-    }
-    const setCodeBlock = () => {
-      const view = getLiveView()
-      if (!view) return
-      const cb = view.state.schema.nodes.code_block
-      if (!cb) return
-      setBlockTypeTo(cb, null)
-    }
-    const insertHr = () => {
-      const view = getLiveView()
-      if (!view) return
-      const hr = view.state.schema.nodes.hr
-      if (!hr) return
-      view.dispatch(view.state.tr.replaceSelectionWith(hr.create()))
-      view.focus()
-    }
-    const insertLink = () => {
-      const view = getLiveView()
-      if (!view) return
-      const state = view.state
-      const { from, to, empty } = state.selection
-      const text = empty ? (prompt('链接文字：') || '链接') : state.doc.textBetween(from, to, ' ')
-      const url = prompt('链接 URL：', 'https://')
-      if (!url) return
-      const link = state.schema.marks.link
-      if (!link) return
-      const tr = state.tr
-      if (empty) {
-        tr.insertText(text, from)
-        tr.addMark(from, from + text.length, link.create({ href: url }))
-      } else {
-        tr.addMark(from, to, link.create({ href: url }))
-      }
-      view.dispatch(tr)
-      view.focus()
-    }
-    const insertImage = () => {
-      const view = getLiveView()
-      if (!view) return
-      const url = prompt('图片 URL：', 'https://')
-      if (!url) return
-      const alt = prompt('图片描述（可选）：') || ''
-      const img = view.state.schema.nodes.image
-      if (!img) return
-      view.dispatch(
-        view.state.tr.replaceSelectionWith(img.create({ src: url, alt })),
-      )
-      view.focus()
-    }
+    // 命令实现见 editorCommands.ts：统一走 milkdown 官方 commandsCtx 管道
+    // （正确集成 keymap / 输入规则 / 历史栈），工具栏按钮与右键菜单复用同一份
+    // runCommand / insertImage / insertTable，不再手写 ProseMirror transaction。
     const cmd = (type: string) => {
-      switch (type) {
-        case 'bold': return toggleMarkByName('strong')
-        case 'italic': return toggleMarkByName('emphasis')
-        case 'code': return toggleMarkByName('inlineCode')
-        case 'h1': return toggleHeading(1)
-        case 'h2': return toggleHeading(2)
-        case 'h3': return toggleHeading(3)
-        case 'ul': return wrapList('bullet_list')
-        case 'ol': return wrapList('ordered_list')
-        case 'quote': return wrapBlockquote()
-        case 'codeblock': return setCodeBlock()
-        case 'link': return insertLink()
-        case 'image': return insertImage()
-        case 'hr': return insertHr()
-      }
+      const ed = getEditor()
+      if (ed) runCommand(ed, type as CmdType)
     }
     const toolbarButtons = () => {
       type BtnDef =
