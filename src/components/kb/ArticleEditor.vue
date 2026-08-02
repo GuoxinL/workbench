@@ -443,6 +443,8 @@ const fromTodoTitle = computed(() => {
 .editor-scroll.editing {
   border-color: var(--brand);
   box-shadow: 0 0 0 3px var(--brand-weak);
+  /* 底色基于当前 bg 微提亮（RGB++ 约 4%），编辑区像被抬起的活跃面；明暗自动跟随 */
+  background: color-mix(in srgb, var(--bg), white 4%);
 }
 
 .right-side {
