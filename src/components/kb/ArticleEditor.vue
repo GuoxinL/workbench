@@ -224,6 +224,31 @@ function scrollTop() {
   document.querySelector('.editor-scroll')?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
+// 发布到公开镜像库（只读分享）
+const shareUrl = computed(() => {
+  const a = props.article
+  if (!a?.published) return ''
+  return `${location.origin}${location.pathname}#/share/${a.id}`
+})
+async function onTogglePublish(v: boolean | string | number) {
+  if (!props.article) return
+  try {
+    await store.setPublished(props.article.id, Boolean(v))
+    ElMessage.success(v ? '已发布，可分享链接给他人只读查看' : '已取消发布')
+  } catch {
+    ElMessage.error('发布失败：请在设置中确认公开镜像仓库已配置且 token 有写权限')
+  }
+}
+async function copyShare() {
+  if (!shareUrl.value) return
+  try {
+    await navigator.clipboard.writeText(shareUrl.value)
+    ElMessage.success('分享链接已复制')
+  } catch {
+    ElMessage.warning('复制失败，请手动选中链接复制')
+  }
+}
+
 const wordCount = computed(() => draftContent.value.replace(/\s/g, '').length)
 const fromTodoTitle = computed(() => {
   const a = props.article
@@ -252,8 +277,23 @@ const fromTodoTitle = computed(() => {
           @blur="schedule"
         />
         <div class="bar-actions">
+          <el-tooltip :content="article.published ? '已发布，外人可只读访问' : '发布到公开镜像库供外人只读访问'" placement="bottom">
+            <el-switch
+              :model-value="article.published"
+              inline-prompt
+              active-text="发布"
+              inactive-text="私密"
+              @change="onTogglePublish"
+            />
+          </el-tooltip>
           <el-button size="small" type="danger" plain @click="remove">删除</el-button>
         </div>
+      </div>
+
+      <div v-if="article.published" class="share-row">
+        <span class="muted">分享链接：</span>
+        <code class="share-link">{{ shareUrl }}</code>
+        <el-button size="small" @click="copyShare">复制</el-button>
       </div>
 
       <div class="meta muted">
@@ -382,7 +422,28 @@ const fromTodoTitle = computed(() => {
   background: transparent;
   color: var(--fg);
 }
-.bar-actions { display: flex; gap: 6px; flex: none; }
+.bar-actions { display: flex; gap: 6px; flex: none; align-items: center; }
+
+.share-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.share-link {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  background: var(--brand-weak);
+  border-radius: 6px;
+  color: var(--brand);
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .meta {
   display: flex;

@@ -62,3 +62,19 @@ export async function putFile(
     throw e
   }
 }
+
+/** 删除单文件；需带当前 blob sha。不存在（404）视为已删除，不抛错。 */
+export async function deleteFile(
+  path: string,
+  sha: string | undefined,
+  config: Config,
+  message: string,
+): Promise<void> {
+  const body: Record<string, unknown> = { message, sha }
+  try {
+    await githubRequest(path, { method: 'DELETE', body }, config)
+  } catch (e) {
+    if (e instanceof GithubError && e.code === 'notfound') return
+    throw e
+  }
+}

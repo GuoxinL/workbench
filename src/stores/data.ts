@@ -5,7 +5,7 @@ import { slug } from '@/lib/slug'
 import { dedupTitle, renameRefs } from '@/lib/links'
 import { cleanupTombstones } from '@/services/sync/serialize'
 import { createSyncEngine, type SyncAdapter } from '@/services/sync/engine'
-import { fetchRemote, pushRemote } from '@/services/github/contents'
+import { fetchRemote, publishToMirror, pushRemote, unpublishFromMirror } from '@/services/github/contents'
 
 const DATA_KEY = 'wb.data.v1'
 const MANIFEST_SHA_KEY = 'wb.manifestSha.v1'
@@ -227,6 +227,27 @@ export const useDataStore = defineStore('data', () => {
     engine.schedulePush()
   }
 
+  // ── 发布到公开镜像库（只读分享） ──────────────────────
+  /** 设置文章发布状态：published=true 镜像 push 到公开库；false 移除。 */
+  async function setPublished(id: string, published: boolean): Promise<void> {
+    const i = data.value.articles.findIndex((n) => n.id === id)
+    if (i < 0) return
+    data.value.articles[i] = { ...data.value.articles[i], published, updatedAt: Date.now() }
+    touch()
+    engine.schedulePush()
+    const cfg = loadConfig()
+    if (!cfg.token) return
+    try {
+      if (published) await publishToMirror(data.value.articles[i], cfg)
+      else await unpublishFromMirror(id, cfg)
+    } catch (e) {
+      // 镜像失败不阻断本地保存；回滚 published 状态避免误导
+      data.value.articles[i] = { ...data.value.articles[i], published: !published }
+      touch()
+      throw e
+    }
+  }
+
   // ── Todo → Article（X7） ─────────────────────────────
   function todoToArticle(todoId: string): Article | null {
     const t = todoById(todoId)
@@ -366,6 +387,7 @@ export const useDataStore = defineStore('data', () => {
     addArticle,
     updateArticle,
     removeArticle,
+    setPublished,
     todoToArticle,
     sync: (manual = false) => engine.sync(manual),
     getConfig,

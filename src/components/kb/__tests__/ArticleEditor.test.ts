@@ -56,3 +56,38 @@ describe('ArticleEditor 双链点击跳转', () => {
     wrapper.unmount()
   })
 })
+
+describe('ArticleEditor 编辑态标识', () => {
+  it('聚焦编辑区时加 .editing 类，离开时移除', async () => {
+    const s = useDataStore()
+    const a = s.addArticle('编辑态测试')
+
+    const wrapper = mount(ArticleEditor, {
+      props: { article: s.articleById(a.id)! },
+      global: {
+        stubs: {
+          MilkdownEditor: { template: '<div class="milkdown"><div class="ProseMirror" tabindex="0"></div></div>' },
+          ElButton: { template: '<button><slot /></button>' },
+          ElSwitch: { template: '<span class="el-switch"></span>' },
+          ElTooltip: { template: '<span><slot /></span>' },
+        },
+      },
+      attachTo: document.body,
+    })
+
+    const scroll = wrapper.find('.editor-scroll').element as HTMLElement
+    // 聚焦：dispatch focusin（bubbles）→ editing=true
+    scroll.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    await nextTick()
+    expect(scroll.classList.contains('editing')).toBe(true)
+
+    // 离开：focusout，relatedTarget 指向编辑区外 → editing=false
+    scroll.dispatchEvent(
+      new FocusEvent('focusout', { bubbles: true, relatedTarget: document.body }),
+    )
+    await nextTick()
+    expect(scroll.classList.contains('editing')).toBe(false)
+
+    wrapper.unmount()
+  })
+})

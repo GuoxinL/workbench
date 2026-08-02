@@ -25,6 +25,7 @@ export interface Article {
   createdAt: number
   updatedAt: number
   deleted: boolean // 软删除墓碑
+  published?: boolean // 是否发布到公开镜像库（只读分享）
 }
 
 /** 仅存本地，永不上传 */
@@ -36,6 +37,7 @@ export interface Config {
   token: string
   poll: number
   apiBase: string
+  publicRepo?: string // 公开镜像仓库 owner/repo（只读分享用，默认推导）
 }
 
 export interface ManifestEntry {

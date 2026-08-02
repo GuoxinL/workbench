@@ -1,6 +1,6 @@
 import type { Article, Config, Manifest } from '@/types'
 import { parseFrontmatter, serializeFrontmatter } from '@/lib/markdown/frontmatter'
-import { ConflictError, getFile, putFile } from './repoFile'
+import { ConflictError, deleteFile, getFile, putFile } from './repoFile'
 import { emptyManifest, getManifest, indexFromArticles, putManifest } from './manifest'
 
 export interface RemoteSnapshot {
@@ -33,6 +33,7 @@ export async function fetchRemote(config: Config): Promise<RemoteSnapshot | null
       createdAt: Number((data as any).createdAt ?? entry.updatedAt),
       updatedAt: entry.updatedAt,
       deleted: false,
+      published: Boolean((data as any).publish),
     })
   }
   return { manifest: m.manifest, manifestSha: m.sha, articles, shas }
@@ -71,7 +72,7 @@ export async function pushRemote(input: PushInput, config: Config): Promise<Push
         deleted: a.deleted,
         fromTodo: a.fromTodo,
         tags: a.tags,
-        publish: true,
+        publish: a.published ?? false,
       },
       a.content,
     )
@@ -101,4 +102,42 @@ export async function pushRemote(input: PushInput, config: Config): Promise<Push
   if (conflictSlug) return { manifest, conflictSlug, manifestSha: '' }
   const newSha = await putManifest(manifest, input.manifestSha, config)
   return { manifest, conflictSlug: null, manifestSha: newSha }
+}
+
+/** 构造公开镜像库用的 config：把 repo 换成 publicRepo，其余（token/apiBase/branch）沿用。 */
+export function mirrorConfig(config: Config): Config | null {
+  const owner = config.repo.split('/')[0]
+  const publicRepo = config.publicRepo || `${owner}/workbench-public`
+  if (!publicRepo || !/^[^/\s]+\/[^/\s]+$/.test(publicRepo)) return null
+  return { ...config, repo: publicRepo }
+}
+
+/** 把单篇文章发布到公开镜像库（供 /share/:id 只读路由读取，公开无需 token）。 */
+export async function publishToMirror(a: Article, config: Config): Promise<void> {
+  const mc = mirrorConfig(config)
+  if (!mc) throw new Error('未配置公开镜像仓库')
+  const md = serializeFrontmatter(
+    {
+      id: a.id,
+      title: a.title,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+      fromTodo: a.fromTodo,
+      tags: a.tags,
+      publish: true,
+    },
+    a.content,
+  )
+  // 镜像库不跟踪 sha 乐观锁（单一作者写），取远端 sha 后 PUT
+  const cur = await getFile(`kb/${a.id}.md`, mc)
+  await putFile(`kb/${a.id}.md`, md, cur?.sha, mc, `publish ${a.title}`)
+}
+
+/** 从公开镜像库移除单篇文章（取消发布）。 */
+export async function unpublishFromMirror(id: string, config: Config): Promise<void> {
+  const mc = mirrorConfig(config)
+  if (!mc) throw new Error('未配置公开镜像仓库')
+  const cur = await getFile(`kb/${id}.md`, mc)
+  if (!cur) return
+  await deleteFile(`kb/${id}.md`, cur.sha, mc, `unpublish ${id}`)
 }

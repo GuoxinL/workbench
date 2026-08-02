@@ -71,6 +71,10 @@ function exportBackup() {
         <el-input v-model="cfg.repo" placeholder="GuoxinL/workbench-data" :class="{ err: cfg.enabled && !repoValid }" />
       </label>
       <label class="field">
+        <span>公开镜像仓库 owner/repo（只读分享用）</span>
+        <el-input v-model="cfg.publicRepo" placeholder="GuoxinL/workbench-public（需先在 GitHub 建公开空仓库）" />
+      </label>
+      <label class="field">
         <span>分支</span>
         <el-input v-model="cfg.branch" placeholder="main" />
       </label>
