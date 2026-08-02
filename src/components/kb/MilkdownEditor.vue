@@ -306,7 +306,9 @@ export default defineComponent({
 })
 </script>
 
-<style scoped>
+<style>
+/* 非 scoped：本组件用渲染函数（无 <template>），scoped 的 data-v 不会加到 h() 元素上，
+   故用非 scoped 让 .md-toolbar / .md-editor-wrap / .tb-sep 等类名生效。类名专一，低风险。 */
 .md-editor-wrap {
   display: flex;
   flex-direction: column;
@@ -323,6 +325,10 @@ export default defineComponent({
   background: var(--card-bg);
   margin-bottom: 10px;
   box-shadow: var(--shadow-sm);
+  /* 滚动时浮动吸附到编辑区最顶端（top:-16px 抵消 .editor-scroll 的 padding-top） */
+  position: sticky;
+  top: -16px;
+  z-index: 20;
 }
 /* 复用 Element Plus 按钮外观，仅做间距统一（去掉相邻按钮的默认外边距） */
 .md-toolbar :deep(.el-button) {
