@@ -28,7 +28,13 @@ function close() {
   emit('close')
 }
 
-function onOverlayClick() { close() }
+// 点击菜单内部不关闭（由菜单项 @click 处理）；仅点击外部时关闭。
+// 必须判断 target：此 listener 是 capture 阶段，先于菜单项 @click 触发，
+// 若不判断会先关菜单导致项点击丢失（真实鼠标点击时序下复现）。
+function onOverlayClick(e: MouseEvent) {
+  if ((e.target as HTMLElement).closest('.ctx-menu')) return
+  close()
+}
 function onKeydown(e: KeyboardEvent) { if (e.key === 'Escape') close() }
 
 onMounted(() => document.addEventListener('click', onOverlayClick, true))
@@ -55,6 +61,7 @@ const style = computed(() => ({
         v-else
         class="item"
         :class="{ hasChild: !!a.children }"
+        @mousedown.prevent
         @click="onItemClick(a)"
         @mouseenter="a.children && (activeChild = a.key)"
         @mouseleave="activeChild = ''"
@@ -68,6 +75,7 @@ const style = computed(() => ({
             v-for="child in a.children"
             :key="child.key"
             class="item"
+            @mousedown.prevent
             @click="onItemClick(child)"
           >
             <span class="label">{{ child.label }}</span>
