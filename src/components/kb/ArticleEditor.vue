@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { watchDebounced } from '@vueuse/core'
 import type { Article } from '@/types'
 import { useDataStore } from '@/stores/data'
@@ -19,6 +19,20 @@ import { openConfirm, openTableDialog } from '@/composables/useDialog'
 const props = defineProps<{ article: Article | null }>()
 const emit = defineEmits<{ open: [string]; changed: [] }>()
 const store = useDataStore()
+
+// 大纲+推荐面板：PC 默认开（现有侧栏），手机默认关（点浮动按钮 → 抽屉）
+const isMobile = ref(typeof window !== 'undefined' && window.innerWidth <= 768)
+const outlineOpen = ref(!isMobile.value)
+function onResize() {
+  const m = window.innerWidth <= 768
+  if (m !== isMobile.value) {
+    isMobile.value = m
+    // 切到 PC 默认开、切到手机默认关
+    outlineOpen.value = !m
+  }
+}
+onMounted(() => window.addEventListener('resize', onResize))
+onBeforeUnmount(() => window.removeEventListener('resize', onResize))
 
 const draftTitle = ref('')
 const draftContent = ref('')
@@ -383,14 +397,27 @@ const fromTodoTitle = computed(() => {
       <LinksPanel :article="article" :content="draftContent" @open="emit('open', $event)" />
     </div>
 
-    <!-- 右栏：大纲(上2/3) + 推荐(下1/3) -->
-    <div class="right-side">
+    <!-- 右栏：大纲(上2/3) + 推荐(下1/3) —— 仅 PC 默认开 -->
+    <div v-if="outlineOpen && !isMobile" class="right-side">
       <ArticleOutline :content="draftContent" @jump="onJumpToHeading" />
       <RelatedPanel :article="article" @open="emit('open', $event)" />
     </div>
 
-    <!-- Top 按钮 -->
+    <!-- 手机端：大纲+推荐抽屉（默认关，浮动按钮打开） -->
+    <el-drawer
+      v-if="isMobile"
+      v-model="outlineOpen"
+      title="大纲 · 推荐"
+      direction="rtl"
+      size="280px"
+    >
+      <ArticleOutline :content="draftContent" @jump="onJumpToHeading" />
+      <RelatedPanel :article="article" @open="emit('open', $event)" />
+    </el-drawer>
+
+    <!-- 浮动按钮：回到顶部 + 大纲开关（PC/手机都有） -->
     <button class="top-btn" title="回到顶部" @click="scrollTop">⬆</button>
+    <button class="outline-btn" :class="{ on: outlineOpen }" title="大纲/推荐" @click="outlineOpen = !outlineOpen">☰</button>
 
     <!-- 右键上下文菜单 -->
     <EditorContextMenu
@@ -570,10 +597,52 @@ const fromTodoTitle = computed(() => {
 }
 .top-btn:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
 
+/* 浮动大纲按钮（PC + 手机） */
+.outline-btn {
+  position: fixed;
+  bottom: 82px;
+  right: 32px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--card-bg);
+  color: var(--fg);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  cursor: pointer;
+  font-size: 16px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.15s, border-color 0.15s, color 0.15s;
+}
+.outline-btn:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.outline-btn.on {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
 .empty {
   align-items: center;
   justify-content: center;
   display: flex;
 }
 .muted { color: var(--muted); }
+
+/* ── 手机端响应式（≤768px）：PC base 不动 ── */
+@media (max-width: 768px) {
+  .editor-scroll {
+    padding: 12px 14px 120px;
+  }
+  .top-btn,
+  .outline-btn {
+    right: 16px;
+    width: 36px;
+    height: 36px;
+  }
+  .outline-btn {
+    bottom: 64px;
+  }
+}
 </style>

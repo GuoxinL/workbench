@@ -42,6 +42,7 @@ function manualSync() {
   border-radius: 999px;
   background: var(--card-bg);
   cursor: pointer;
+  white-space: nowrap;
 }
 .dot {
   width: 8px;
@@ -69,5 +70,17 @@ function manualSync() {
 }
 .chip.error {
   color: #b91c1c;
+}
+
+/* 手机端：只显状态圆点，藏文字防断行 */
+@media (max-width: 768px) {
+  .chip {
+    padding: 4px;
+    gap: 0;
+    font-size: 0;
+  }
+  .dot {
+    margin: 0;
+  }
 }
 </style>

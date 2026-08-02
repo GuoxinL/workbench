@@ -73,4 +73,31 @@ window.addEventListener('beforeunload', () => {
   border-color: var(--brand);
   color: var(--brand);
 }
+
+/* ── 手机端响应式（≤768px）：PC base 不动，仅此处叠加 ── */
+@media (max-width: 768px) {
+  .topbar {
+    gap: 6px;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .brand {
+    font-size: 15px;
+    white-space: nowrap;
+  }
+  .tabs a {
+    padding: 5px 10px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .right {
+    gap: 5px;
+  }
+  .gear {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+}
 </style>
