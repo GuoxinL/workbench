@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>图云（Image Cloud）接入设计方案</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1f2328;
+    --muted: #656d76;
+    --line: #d0d7de;
+    --brand: #0969da;
+    --brand-bg: #ddf4ff;
+    --code-bg: #f6f8fa;
+    --ok: #1a7f37;
+    --warn: #9a6700;
+    --bad: #cf222e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #30363d;
+      --brand: #4493f8; --brand-bg: #15263b; --code-bg: #161b22;
+      --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    line-height: 1.7; font-size: 15px;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 32px 20px 80px; }
+  header.doc { border-bottom: 1px solid var(--line); padding-bottom: 18px; margin-bottom: 24px; }
+  header.doc h1 { font-size: 26px; margin: 0 0 8px; }
+  .meta { color: var(--muted); font-size: 13px; }
+  nav.toc { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 18px; margin: 20px 0 28px; font-size: 14px; }
+  nav.toc b { display: block; margin-bottom: 6px; }
+  nav.toc a { color: var(--brand); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  nav.toc ol { margin: 6px 0 0; padding-left: 20px; }
+  nav.toc li { margin: 2px 0; }
+  h2 { font-size: 20px; margin: 36px 0 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 16px; margin: 22px 0 8px; color: var(--fg); }
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 5px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 13px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 16px; overflow: auto; }
+  pre code { background: none; padding: 0; font-size: 12.5px; line-height: 1.55; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 13.5px; }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 600; }
+  .note { border-left: 4px solid var(--brand); background: var(--brand-bg);
+    padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 14px 0; }
+  .warn { border-left-color: var(--warn); background: rgba(154,103,0,.1); }
+  .bad  { border-left-color: var(--bad);  background: rgba(207,34,46,.08); }
+  .pill { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--muted); margin-right: 4px; }
+  .kbd { font-family: monospace; background: var(--code-bg); border: 1px solid var(--line);
+    border-radius: 5px; padding: 0 5px; }
+  footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="doc">
+    <h1>图云（Image Cloud）接入设计方案</h1>
+    <div class="meta">
+      维护者：Guoxin.Liu &lt;lgx31@sina.cn&gt; ｜ 最后更新：2026-08-02 ｜ 状态：设计稿（待确认后进入 SOP 实现）<br/>
+      目标：把文章内联的 base64 图片改为外置到可插拔的图床/对象存储，正文只存可访问 URL。
+      本方案只定义 <b>接口与插件契约</b>，让接入方按接口即可迅速实现任意图云「插件」，且对现有同步层零侵入。
+    </div>
+  </header>
+
+  <nav class="toc">
+    <b>目录</b>
+    <ol>
+      <li><a href="#s1">设计原则</a></li>
+      <li><a href="#s2">整体架构与数据流</a></li>
+      <li><a href="#s3">核心接口设计（TypeScript）</a></li>
+      <li><a href="#s4">上传编排（框架统一实现）</a></li>
+      <li><a href="#s5">配置页渲染（configSchema 驱动）</a></li>
+      <li><a href="#s6">签名服务（Signer）设计</a></li>
+      <li><a href="#s7">参考实现骨架</a></li>
+      <li><a href="#s8">新增一个图云的 5 步</a></li>
+      <li><a href="#s9">与现有同步的衔接（零侵入）</a></li>
+      <li><a href="#s10">从内联 data URI 迁移（可选）</a></li>
+      <li><a href="#s11">测试策略</a></li>
+      <li><a href="#s12">待确认事项</a></li>
+      <li><a href="#s13">落地步骤建议</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="s1">1. 设计原则</h2>
+  <ul>
+    <li><b>可插拔（Plugin）</b>：每种图云是一个独立适配器（adapter），通过统一接口注册进框架；新增图云 = 新增一个适配器文件，不动核心代码。</li>
+    <li><b>AI 开发友好</b>：接口签名固定、单一职责；每个适配器自带 <code>configSchema</code> 声明所需配置字段，AI/开发者读一个参考实现即可照葫芦画瓢产出新插件。</li>
+    <li><b>配置化</b>：图云选择在「设置 · 同步」页可配置——下拉选 provider + 按 <code>configSchema</code> 动态渲染字段 + 「测试连接」。配置只存本地 <code>wb.cfg.v1</code>。</li>
+    <li><b>密钥不下发（红线 5）</b>：图云的 SecretKey / 私钥永远不进前端、不进 <code>data/workbench.json</code>、不打日志。签名在服务端（Worker / 云函数）完成，前端只拿一次性上传凭证。</li>
+    <li><b>与同步解耦</b>：图片以 URL 存进 <code>article.content</code> 后，<code>kb/&lt;id&gt;.md</code> 体积骤降，现有 <code>manifest</code> + 逐文件同步逻辑完全不用改（详见 §9）。本方案只替换「图片从哪来」。</li>
+  </ul>
+
+  <h2 id="s2">2. 整体架构与数据流</h2>
+  <pre><code>┌──────────── 浏览器（工作台前端） ────────────┐
+│                                               │
+│  Markdown 编辑器 ──粘贴/选择图片──▶ compress() │  (现有 src/lib/image.ts，仅压不内联)
+│                                               │
+│  useImageUpload (框架统一编排，非插件职责)      │
+│     │ 1. adapter.issueUploadCredential()      │
+│     │      └─► 若 signerKind='remote'         │
+│     │            POST {signerUrl} ─────────────┼──▶ 签名服务(Worker/云函数，持 Secret)
+│     │                ◀── 一次性 UploadCredential┼──  返回直传 URL + 头/表单
+│     │ 2. 直传 Blob 到图云 (PUT/POST，按 cred)  │
+│     │ 3. adapter.urlFor(key) ─▶ 图片 URL       │
+│     ▼                                          │
+│  把 ![](url) 写入 article.content              │
+└───────────────────────────────────────────────┘
+        │                                          │
+        ▼  (不改)                                  │ (外部)
+  现有同步引擎 ──▶ GitHub 仓库 kb/&lt;id&gt;.md       │ 图云对象存储（七牛/COS/OSS/R2…）
+  (正文已是小巧的 URL 文本)                         │</code></pre>
+  <div class="note">要点：<b>上传编排（<code>useImageUpload</code>）是框架提供的，所有适配器复用它</b>；适配器只回答三个协议问题——「怎么拿凭证」「凭证怎么用」「key 怎么变 URL」。</div>
+
+  <h2 id="s3">3. 核心接口设计（TypeScript）</h2>
+  <p class="meta">落点建议：<code>src/services/imagehost/types.ts</code>（接口）+ <code>src/services/imagehost/registry.ts</code>（注册表）+ <code>src/services/imagehost/adapters/*.ts</code>（各插件）+ <code>src/services/imagehost/useImageUpload.ts</code>（编排）。</p>
+
+  <h3>3.1 配置与字段声明</h3>
+  <pre><code>/** 图云配置，整体挂在 Config.imageHost（仅存本地 wb.cfg.v1，永不上传） */
+export interface ImageHostConfig {
+  provider: string            // 适配器 id，如 'qiniu' | 'cos' | 'oss' | 'r2' | 'upgit'
+  enabled: boolean
+  /** 远端签名服务地址（signerKind='remote' 时必填）。持 Secret 的服务端，URL 本身非机密 */
+  signerUrl?: string
+  /** 其余字段由 adapter.configSchema 声明，例如：
+   *  bucket / region / endpoint / cdnHost / baseUrl / publicRead / maxAgeSec … */
+  [key: string]: unknown
+}
+
+/** 设置页动态渲染字段的声明——AI/开发者据此知道要配什么 */
+export interface ConfigField {
+  key: string
+  label: string
+  type: 'text' | 'password' | 'url' | 'number' | 'select'
+  required?: boolean
+  placeholder?: string
+  secret?: boolean            // true=敏感字段，仅 signerUrl 模式下不落前端（由服务端持有）
+  help?: string
+  options?: { label: string; value: string }[]   // type='select' 用
+}</code></pre>
+
+  <h3>3.2 上传凭证（前端直传用）</h3>
+  <pre><code>/** 适配器签发/返回的一次性上传凭证，前端据此直传，无需 Secret */
+export interface UploadCredential {
+  method: 'PUT' | 'POST' | 'POST-FORM'
+  url: string                                   // 直传目标（含/不含 query 签名）
+  headers?: Record&lt;string, string&gt;             // PUT / POST 头部（如 Authorization / x-*）
+  formFields?: Record&lt;string, string&gt;          // POST-FORM 的 &lt;input type=hidden&gt;
+  fileKey: string                              // 成功后用于 urlFor 的对象 key
+  expiresAt?: number                           // 凭证过期时间戳（ms），编排层据此提前刷新
+}
+
+export interface UploadMeta {
+  fileName: string                             // 原始文件名（用于扩展名）
+  mime: string                                // image/webp 等
+  size: number
+  width?: number
+  height?: number
+  /** 建议的对象 key 前缀，如 'wb/&lt;articleId&gt;/'，适配器可忽略改用自有规则 */
+  suggestedPrefix?: string
+}</code></pre>
+
+  <h3>3.3 适配器接口（插件契约）</h3>
+  <pre><code>export interface ImageHostAdapter {
+  /** 唯一 id，对应 Config.provider */
+  readonly id: string
+  /** 展示名（设置页下拉用） */
+  readonly name: string
+  /** 驱动设置页动态渲染的配置字段 */
+  readonly configSchema: ConfigField[]
+
+  /**
+   * 密钥持有方式：
+   *  - 'remote'：Secret 在服务端 signerUrl 处，前端只拿一次性凭证（推荐，守红线 5）
+   *  - 'local' ：Secret 也在前端 cfg 中（仅开发/自签场景，标记不安全）
+   *  - 'none'  ：无需密钥（如公开可写桶，极不推荐，仅匿名演示）
+   */
+  readonly signerKind: 'remote' | 'local' | 'none'
+
+  /** 配置是否完整（对应现有 isConfigComplete 思路，决定是否可用） */
+  isConfigComplete(cfg: ImageHostConfig): boolean
+
+  /**
+   * 申请上传凭证。框架在每次上传前调用。
+   * - signerKind='remote'：内部 POST signerUrl（携带 meta + 非机密 cfg），由服务端签名返回 UploadCredential
+   * - signerKind='local' ：用本地 Secret 直接构造（不推荐生产）
+   */
+  issueUploadCredential(cfg: ImageHostConfig, meta: UploadMeta): Promise&lt;UploadCredential&gt;
+
+  /**
+   * 由对象 key 生成可访问 URL。
+   * - 公开桶：返回直链（可拼接 cdnHost）
+   * - 私有桶：返回短期签名 URL（expiresSec 默认如 600s，渲染时调用）
+   */
+  urlFor(cfg: ImageHostConfig, key: string, opts?: { expiresSec?: number }): string
+
+  /** 可选：删除对象（编辑器删除图片/清理孤儿时用） */
+  delete?(cfg: ImageHostConfig, key: string): Promise&lt;void&gt;
+
+  /** 可选：连接自检（设置页「测试连接」按钮调用），返回是否可达 */
+  probe?(cfg: ImageHostConfig): Promise&lt;boolean&gt;
+}</code></pre>
+
+  <h3>3.4 注册表（插件自注册）</h3>
+  <pre><code>const registry = new Map&lt;string, ImageHostAdapter&gt;()
+
+export function registerImageHost(a: ImageHostAdapter): void {
+  registry.set(a.id, a)
+}
+export function getImageHost(provider: string): ImageHostAdapter | undefined {
+  return registry.get(provider)
+}
+export function listImageHosts(): ImageHostAdapter[] {
+  return [...registry.values()]
+}</code></pre>
+
+  <h2 id="s4">4. 上传编排（框架统一实现，非插件职责）</h2>
+  <p><code>src/services/imagehost/useImageUpload.ts</code> 实现一次，所有适配器复用：</p>
+  <pre><code>export async function uploadImage(
+  cfg: ImageHostConfig,
+  file: Blob,
+  meta: UploadMeta,
+): Promise&lt;{ url: string; key: string; width?: number; height?: number }&gt; {
+  const adapter = getImageHost(cfg.provider)
+  if (!adapter || !adapter.isConfigComplete(cfg)) throw new Error('图云未配置')
+  const cred = await adapter.issueUploadCredential(cfg, meta)
+  // 按 cred.method 直传（PUT / POST / POST-FORM），可带进度回调
+  const ok = await putToCloud(cred, file)
+  if (!ok) throw new Error('图云上传失败')
+  const url = adapter.urlFor(cfg, cred.fileKey)   // 私有桶可改为渲染时再签名
+  return { url, key: cred.fileKey, width: meta.width, height: meta.height }
+}</code></pre>
+  <p>编辑器调用 <code>uploadImage</code> 拿到 <code>url</code> 后，把 <code>![](url)</code> 插入 markdown。粘贴图片的现有 <code>paste-image.ts</code> 改为「压缩 → 调 uploadImage → 插入 URL」，不再内联 data URI。</p>
+
+  <h2 id="s5">5. 配置页渲染（configSchema 驱动）</h2>
+  <p><code>SettingsSheet.vue</code> 新增「图云」分组，逻辑完全数据驱动：</p>
+  <ul>
+    <li>「启用图云」开关 → <code>cfg.imageHost.enabled</code></li>
+    <li>「图云厂商」下拉 → <code>listImageHosts().map(a =&gt; ({ label: a.name, value: a.id }))</code></li>
+    <li>选中后，遍历 <code>getImageHost(provider).configSchema</code> 动态渲染字段（switch on <code>field.type</code>）</li>
+    <li>保存时整段写回 <code>cfg.imageHost</code>，调用 <code>store.saveConfig</code>（仅落本地）</li>
+    <li>「测试连接」按钮 → 调 <code>adapter.probe?.(cfg.imageHost)</code> 或发一次最小 <code>issueUploadCredential</code></li>
+  </ul>
+  <div class="note">因为字段来自 <code>configSchema</code>，<b>新增图云无需改设置页模板</b>——这是「AI 开发友好 + 配置化」的核心。</div>
+
+  <h2 id="s6">6. 签名服务（Signer）设计</h2>
+  <p>为解决「密钥不下发」（红线 5），推荐 <code>signerKind='remote'</code>：</p>
+  <ul>
+    <li>前端持有 <code>cfg.imageHost.signerUrl</code>（一个你部署的 HTTPS 端点，URL 本身非机密）。</li>
+    <li>服务端（Cloudflare Worker / 腾讯云函数 / 阿里 FC …）持有 SecretKey，按 adapter 的规则签发 <code>UploadCredential</code> 返回。</li>
+    <li>项目已有 <code>proxy/cloudflare-worker.js</code>，<b>最顺的落点是扩展该 Worker 增加一个 <code>/img-sign</code> 路由</b>，按 <code>provider</code> 分发到各图云的签名逻辑（七牛 <code>uptoken</code>、COS/OSS/R2 预签名 URL）。</li>
+  </ul>
+  <pre><code>// 请求：POST {signerUrl}  body: { provider, meta: UploadMeta, cfg: 非机密字段 }
+// 响应：200 { credential: UploadCredential }
+// 失败：4xx/5xx { error }</code></pre>
+  <div class="note">这样每种图云的「密钥 + 签名算法」天然隔离在各自的服务端分支里；前端适配器即使被读源码也拿不到 Secret。</div>
+
+  <h2 id="s7">7. 参考实现骨架</h2>
+  <h3>7.1 适配器模板 <code>src/services/imagehost/adapters/_template.ts</code></h3>
+  <pre><code>import type { ImageHostAdapter, ImageHostConfig, UploadCredential, UploadMeta } from '../types'
+
+export const templateAdapter: ImageHostAdapter = {
+  id: 'template',
+  name: '模板图云（请复制改名）',
+  signerKind: 'remote',                    // 生产用 remote
+  configSchema: [
+    { key: 'bucket', label: '存储桶', type: 'text', required: true, placeholder: 'my-bucket' },
+    { key: 'region', label: '地域', type: 'text', required: false },
+    { key: 'cdnHost', label: 'CDN 域名(可选)', type: 'url', required: false },
+    { key: 'publicRead', label: '公开读', type: 'select', required: false,
+      options: [{ label: '是', value: 'true' }, { label: '否', value: 'false' }] },
+  ],
+  isConfigComplete(cfg) {
+    return !!cfg.signerUrl &amp;&amp; !!cfg.bucket
+  },
+  async issueUploadCredential(cfg, meta) {
+    const r = await fetch(cfg.signerUrl!, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: this.id, meta, cfg: stripSecret(cfg) }),
+    })
+    if (!r.ok) throw new Error('签名失败 ' + r.status)
+    return (await r.json()).credential as UploadCredential
+  },
+  urlFor(cfg, key, opts) {
+    const host = (cfg.cdnHost as string) || `https://${cfg.bucket}.example.com`
+    return `${host}/${key}`                 // 私有桶改为返回签名 URL
+  },
+}
+
+// 仅保留非 secret 字段发给签名服务
+function stripSecret(cfg: ImageHostConfig): Record&lt;string, unknown&gt; {
+  const out: Record&lt;string, unknown&gt; = { ...cfg }
+  delete out.signerUrl
+  return out
+}</code></pre>
+
+  <h3>7.2 各厂商差异点（AI 实现时只需关注这几处）</h3>
+  <table>
+    <thead><tr><th>厂商</th><th>signerKind</th><th>issueUploadCredential 产物</th><th>urlFor 规则</th><th>服务端签名要点</th></tr></thead>
+    <tbody>
+      <tr><td>七牛 Kodo</td><td>remote</td><td><code>POST-FORM</code> + <code>token</code>(uptoken)</td><td><code>cdnHost/key</code></td><td>服务端用 SecretKey 算 uptoken（PUT 策略 + deadline）</td></tr>
+      <tr><td>腾讯云 COS</td><td>remote</td><td><code>PUT</code> 预签名 URL</td><td><code>bucket.cos.region.myqcloud.com/key</code>（或 cdnHost）</td><td>服务端用 SecretId/Key 算 COS 签名 v5</td></tr>
+      <tr><td>阿里云 OSS</td><td>remote</td><td><code>PUT</code> 预签名 URL</td><td><code>bucket.oss-region.aliyuncs.com/key</code></td><td>服务端算 OSS Signature</td></tr>
+      <tr><td>Cloudflare R2</td><td>remote</td><td><code>PUT</code> 预签名 URL（S3 兼容）</td><td><code>cdnHost/key</code></td><td>服务端用 AccountId/Key 算 S3 V4 签名</td></tr>
+      <tr><td>本地/自签</td><td>local</td><td>前端直接用 AccessKey 构造</td><td>同公开桶</td><td>不推荐生产</td></tr>
+      <tr><td>通用 CLI（upgit 类）</td><td>remote</td><td>调外部 HTTP 服务返回 URL</td><td>服务返回</td><td>你自己的中转</td></tr>
+    </tbody>
+  </table>
+  <div class="note">AI 友好性结论：无论哪种图云，前端适配器模板几乎一致（都是「POST signerUrl → 拿 cred → 直传 → urlFor」），差异 90% 在服务端签名分支。因此一个新图云的接入工作量 ≈ 写 <code>configSchema</code> + 改 <code>urlFor</code> 拼接 + 在 Worker 加一个签名分支。</div>
+
+  <h2 id="s8">8. 新增一个图云的 5 步（AI/开发者 SOP）</h2>
+  <ol>
+    <li>复制 <code>_template.ts</code> → <code>adapters/&lt;provider&gt;.ts</code>，填 <code>id</code> / <code>name</code> / <code>configSchema</code>。</li>
+    <li>实现 <code>isConfigComplete</code> 与 <code>urlFor</code>（纯字符串拼接，无网络）。</li>
+    <li>实现 <code>issueUploadCredential</code>：默认 POST <code>signerUrl</code> 即可，无需改。</li>
+    <li>在签名服务（Worker/云函数）加该 provider 的签名分支，返回对应 <code>UploadCredential</code>。</li>
+    <li>文件底部 <code>registerImageHost(xxxAdapter)</code>；设置页自动出现该选项。</li>
+  </ol>
+  <div class="note">第 3 步前端在模板里已通用，多数图云<b>只需改第 2、4 步</b>。</div>
+
+  <h2 id="s9">9. 与现有同步的衔接（零侵入）</h2>
+  <ul>
+    <li>图片外置后，<code>article.content</code> 从「含 data URI 的大文本」变为「含 URL 的小文本」，<code>kb/&lt;id&gt;.md</code> 体积回归 KB 级。</li>
+    <li>现有同步引擎（<code>src/services/sync/engine.ts</code>）、<code>manifest</code>、<code>contents.ts</code> <b>完全不用改</b>；且因文章变小，前序讨论的「增量同步」「localStorage 5MB 危机」一并缓解。</li>
+    <li><code>Config</code> 仅新增 <code>imageHost?: ImageHostConfig</code> 一个字段（<code>src/types/index.ts</code>），存 <code>wb.cfg.v1</code>，不上传（与 <code>token</code> 同待遇）。</li>
+    <li>设置页 <code>SettingsSheet.vue</code> 仅新增一个数据驱动的「图云」分组，不改既有 GitHub 同步逻辑。</li>
+  </ul>
+
+  <h2 id="s10">10. 从内联 data URI 迁移（可选，一次性）</h2>
+  <p>对已有含 <code>data:image/...</code> 的历史文章，提供一次性迁移脚本/按钮：</p>
+  <ol>
+    <li>遍历 <code>articles</code>，正则提取正文中的 <code>data:image/...;base64,XXX</code>。</li>
+    <li>逐个 <code>uploadImage</code> 上传，拿到 URL，替换原 data URI。</li>
+    <li><code>touch()</code> + 触发一次同步推送。</li>
+    <li>迁移幂等：已为 URL 的不处理；失败项记录跳过，不阻塞。</li>
+  </ol>
+  <div class="note">该迁移属「可选项」，不阻塞图云接入；新写入直接走 URL，历史数据可后续清理。</div>
+
+  <h2 id="s11">11. 测试策略</h2>
+  <ul>
+    <li><b>接口契约测试</b>：用一个 <code>mockAdapter</code>（本地 <code>signerKind='local'</code>，返回假 cred）验证 <code>useImageUpload</code> 编排、设置页 <code>configSchema</code> 渲染、注册表查找。</li>
+    <li><b>适配器单测</b>：对每个真实适配器，mock <code>signerUrl</code> 的 fetch 响应，断言 <code>issueUploadCredential</code> 产物结构、<code>urlFor</code> 拼接正确（覆盖公开/私有、cdnHost 有无）。</li>
+    <li><b>签名服务单测</b>：Worker/云函数侧对每种 provider 的签名分支做单测，确保返回的 <code>UploadCredential</code> 能被对应图云接受（可用各厂商 SDK 校验）。</li>
+    <li>现有 <code>src/services/sync/__tests__/</code> 体系沿用，新增 <code>src/services/imagehost/__tests__/</code>。</li>
+  </ul>
+
+  <h2 id="s12">12. 待确认事项（进入实现前）</h2>
+  <ol>
+    <li><b>首接哪家</b>：建议先用 <b>七牛 Kodo</b>（永久免费额度 + 流量便宜 + 图片处理内置）或 <b>Cloudflare R2</b>（复用现有 Worker，出站免费但国内延迟不稳）做参考实现。</li>
+    <li><b>签名服务落点</b>：扩展现有 <code>proxy/cloudflare-worker.js</code> 加 <code>/img-sign</code> 路由，还是独立一个小云函数？（推荐前者，复用既有部署。）</li>
+    <li><b>私有桶 vs 公开桶</b>：笔记可能含敏感截图，默认建议<b>私有桶 + 渲染时短期签名 URL</b>；是否接受公开桶 + 随机路径的简化方案？</li>
+    <li><b>迁移开关</b>：是否随首版一并提供「历史 data URI → URL」迁移按钮？</li>
+  </ol>
+
+  <h2 id="s13">13. 落地步骤建议（确认后转 SOP）</h2>
+  <ol>
+    <li>加 <code>types.ts</code> / <code>registry.ts</code> / <code>useImageUpload.ts</code>（框架层）。</li>
+    <li>实现首接 adapter（如 <code>qiniu.ts</code>）+ Worker <code>/img-sign</code> 分支。</li>
+    <li><code>SettingsSheet.vue</code> 增加数据驱动的「图云」分组。</li>
+    <li><code>paste-image.ts</code> / 编辑器改为「压缩 → uploadImage → 插入 URL」。</li>
+    <li>单测 + 手动验证（含敏感密钥不落前端核查）。</li>
+    <li>进入 SOP 的 UT / Deploy / IT / Docs / Review / Commit。</li>
+  </ol>
+
+  <footer>
+    本文档为设计稿，配套决策见 §12 待确认事项。确认后进入 SOP 实现，代码落点以 §3 / §13 为准。<br/>
+    关联文件：<code>src/lib/image.ts</code> · <code>src/types/index.ts</code> · <code>src/components/common/SettingsSheet.vue</code> · <code>proxy/cloudflare-worker.js</code> · <code>src/services/sync/*</code>
+  </footer>
+</div>
+</body>
+</html>
