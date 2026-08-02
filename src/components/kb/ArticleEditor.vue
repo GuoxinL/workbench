@@ -114,9 +114,9 @@ const menuActions: MenuAction[] = [
 ]
 
 function onEditorContextMenu(e: MouseEvent) {
-  e.preventDefault()
   const el = (e.target as HTMLElement).closest('.milkdown, .milkdown-editor, .ProseMirror')
-  if (!el) return
+  if (!el) return // 不在编辑器内：放行浏览器原生右键菜单（标题/标签输入框等）
+  e.preventDefault()
   ctxMenu.value = { x: e.clientX, y: e.clientY, show: true }
 }
 
@@ -219,7 +219,7 @@ const fromTodoTitle = computed(() => {
 <template>
   <section v-if="article" class="editor">
     <!-- 中栏：编辑区 -->
-    <div class="editor-scroll" @click="onWikilinkClick" @contextmenu.prevent="onEditorContextMenu">
+    <div class="editor-scroll" @click="onWikilinkClick" @contextmenu="onEditorContextMenu">
       <div class="bar">
         <input
           v-model="draftTitle"

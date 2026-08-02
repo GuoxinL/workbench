@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 export interface MenuAction {
   key: string
@@ -34,10 +34,11 @@ function onKeydown(e: KeyboardEvent) { if (e.key === 'Escape') close() }
 onMounted(() => document.addEventListener('click', onOverlayClick, true))
 onBeforeUnmount(() => document.removeEventListener('click', onOverlayClick, true))
 
-const style = ref({
+// 位置随 props 实时计算：菜单已显示时再次右键也能更新位置
+const style = computed(() => ({
   left: Math.min(props.x, window.innerWidth - 240) + 'px',
   top: Math.min(props.y, window.innerHeight - 400) + 'px',
-})
+}))
 </script>
 
 <template>

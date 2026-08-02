@@ -21,9 +21,10 @@ import type { EditorView } from '@milkdown/prose/view'
 // 运行时 h() 调用需显式导入组件，故在此直接 import ElButton / ElIcon。
 import { ElButton, ElIcon } from 'element-plus'
 // 图标取自 Element Plus 官方图标库（element-plus 的配套依赖，随装随有）。
-// 无序列表/引用/代码块/链接/图片/分割线用 EP 现成图标；加粗/斜体/行内代码/标题
-// 在 EP 中无对应图标，用同风格的内联 SVG 绘制，保证工具栏视觉统一。
-import { List, Document, Link, Picture, ChatLineSquare, Minus, Sort } from '@element-plus/icons-vue'
+// 无序列表/链接/图片/分割线用 EP 现成图标；加粗/斜体/行内代码/标题/有序列表/
+// 代码块在 EP 中无合适图标或原 EP 图标与操作不符（ol 原 Sort、codeblock 原 Document），
+// 一律用同风格内联 SVG 绘制，保证工具栏视觉统一且图标与操作语义一致。
+import { List, Link, Picture, Minus } from '@element-plus/icons-vue'
 import { runCommand, insertImage, insertTable, type CmdType } from './editorCommands'
 
 // ── 工具栏内联 SVG 图标（与 EP 图标同风格：1em、stroke currentColor）──
@@ -86,6 +87,29 @@ const makeHIcon = (n: number) =>
 const H1Icon = makeHIcon(1)
 const H2Icon = makeHIcon(2)
 const H3Icon = makeHIcon(3)
+// 有序列表：三条横线各带序号 1/2/3（EP 无编号列表图标，原 Sort 上下箭头与操作不符）
+const OrderedListIcon = defineComponent({
+  name: 'OrderedListIcon',
+  render: () =>
+    h('svg', SVG_PROPS, [
+      h('text', { x: 1.5, y: 8, 'font-size': 7, 'font-weight': 700, 'font-family': 'sans-serif', stroke: 'none', fill: 'currentColor' }, '1'),
+      h('line', { x1: 8, y1: 6, x2: 21, y2: 6 }),
+      h('text', { x: 1.5, y: 15, 'font-size': 7, 'font-weight': 700, 'font-family': 'sans-serif', stroke: 'none', fill: 'currentColor' }, '2'),
+      h('line', { x1: 8, y1: 13, x2: 21, y2: 13 }),
+      h('text', { x: 1.5, y: 22, 'font-size': 7, 'font-weight': 700, 'font-family': 'sans-serif', stroke: 'none', fill: 'currentColor' }, '3'),
+      h('line', { x1: 8, y1: 20, x2: 21, y2: 20 }),
+    ]),
+})
+// 代码块：带边框的代码窗口 + </> 尖括号（原 Document 图标与"代码"语义不符）
+const CodeBlockIcon = defineComponent({
+  name: 'CodeBlockIcon',
+  render: () =>
+    h('svg', SVG_PROPS, [
+      h('rect', { x: 2, y: 4, width: 20, height: 16, rx: 2 }),
+      h('path', { d: 'M10 10l-3 2 3 2' }),
+      h('path', { d: 'M14 10l3 2-3 2' }),
+    ]),
+})
 
 const MilkdownCore = defineComponent({
   name: 'MilkdownCore',
@@ -203,16 +227,16 @@ const MilkdownCore = defineComponent({
       const defs: BtnDef[] = [
         { t: 'bold', title: '加粗 (Ctrl+B)', icon: BoldIcon },
         { t: 'italic', title: '斜体 (Ctrl+I)', icon: ItalicIcon },
-        { t: 'code', title: '行内代码', icon: CodeIcon },
         { sep: true },
         { t: 'h1', title: '标题 1', icon: H1Icon },
         { t: 'h2', title: '标题 2', icon: H2Icon },
         { t: 'h3', title: '标题 3', icon: H3Icon },
         { sep: true },
         { t: 'ul', title: '无序列表', icon: List },
-        { t: 'ol', title: '有序列表', icon: Sort },
-        { t: 'quote', title: '引用块', icon: ChatLineSquare },
-        { t: 'codeblock', title: '代码块', icon: Document },
+        { t: 'ol', title: '有序列表', icon: OrderedListIcon },
+        { sep: true },
+        { t: 'code', title: '行内代码', icon: CodeIcon },
+        { t: 'codeblock', title: '代码块', icon: CodeBlockIcon },
         { sep: true },
         { t: 'link', title: '插入链接', icon: Link },
         { t: 'image', title: '插入图片', icon: Picture },
