@@ -33,14 +33,16 @@ export function pasteImagePlugin() {
 
         e.preventDefault()
         ;(async () => {
-          const { state, dispatch } = view
-          const pos = state.selection.from
           for (const file of files) {
             try {
+              // 压缩为 webp data URI（存储必须压缩）
               const dataUri = await compressImage(file)
-              const md = `![](${dataUri})`
-              const tr = state.tr.insertText(md, pos)
-              dispatch(tr)
+              // 插入真正的 image 节点（而非原始 markdown 文本，否则 WYSIWYG 不渲染）
+              const st = view.state
+              const imgType = st.schema.nodes.image
+              if (!imgType) continue
+              const tr = st.tr.replaceSelectionWith(imgType.create({ src: dataUri, alt: '' }))
+              view.dispatch(tr)
             } catch (err) {
               console.warn('[paste-image] compress failed', err)
             }
