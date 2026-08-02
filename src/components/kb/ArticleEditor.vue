@@ -82,24 +82,32 @@ function onContentChange(md: string) {
 /** 外部 flush：ArticlesView 切走前落盘 */
 defineExpose({ flush })
 
-/** 双链点击：wikilink 的 data-slug → 查找文章 → 跳转；不存在则提示创建 */
+/** 编辑区点击：双链跳转/创建；锚点链接(#slug)滚动到本文标题 */
 async function onWikilinkClick(e: MouseEvent) {
-  const el = (e.target as HTMLElement).closest('.wikilink') as HTMLElement | null
-  if (!el) return
-  // 必须阻止 <a href="#"> 的默认导航：否则 hash 被清空为 '#'（路由 '/'），
-  // 会触发 router 的 redirect '/todos'，导致点击双链跳转到待办页（#/todos）。
-  e.preventDefault()
-  const s = el.getAttribute('data-slug')
-  if (!s) return
-  const target = store.articles.find((n) => !n.deleted && slug(n.title) === s)
-  if (target) {
-    emit('open', target.id)
-  } else {
-    const title = el.getAttribute('data-title') || s
-    if (await openConfirm({ title: '创建文章', message: `创建文章「${title}」？`, confirmText: '创建' })) {
-      const na = store.addArticle(title)
-      emit('open', na.id)
+  const wl = (e.target as HTMLElement).closest('.wikilink') as HTMLElement | null
+  if (wl) {
+    // 双链
+    e.preventDefault()
+    const s = wl.getAttribute('data-slug')
+    if (!s) return
+    const target = store.articles.find((n) => !n.deleted && slug(n.title) === s)
+    if (target) {
+      emit('open', target.id)
+    } else {
+      const title = wl.getAttribute('data-title') || s
+      if (await openConfirm({ title: '创建文章', message: `创建文章「${title}」？`, confirmText: '创建' })) {
+        const na = store.addArticle(title)
+        emit('open', na.id)
+      }
     }
+    return
+  }
+  // 锚点链接 a[href^="#"]：滚动到本文匹配标题
+  const anchor = (e.target as HTMLElement).closest('a[href^="#"]') as HTMLAnchorElement | null
+  if (anchor) {
+    e.preventDefault()
+    const id = decodeURIComponent(anchor.getAttribute('href')!.slice(1))
+    if (id) onJumpToHeading(id)
   }
 }
 

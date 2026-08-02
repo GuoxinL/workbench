@@ -114,7 +114,7 @@ describe('MilkdownEditor 右键菜单同源命令（与工具栏一致）', () =
     // 7) 链接：空选区下应插入带 link 标记的文字，href 正确
     resetDoc(view, '链接测试。')
     setCursor(view, 1)
-    await api.cmd('link')
+    api.insertLinkMark('https://example.com')
     await new Promise((r) => setTimeout(r, 30))
     let linkHref: string | null = null
     view.state.doc.descendants((n: any) => {

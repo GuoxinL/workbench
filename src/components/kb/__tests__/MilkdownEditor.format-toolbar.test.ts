@@ -202,11 +202,11 @@ describe('MilkdownEditor 常驻格式工具栏命令', () => {
     await new Promise((r) => setTimeout(r, 50))
     expect(hasNode('code_block')).toBe(true)
 
-    // 10) 链接：点击「插入链接」在光标处插入带 link 标记的文字
+    // 10) 链接：工具栏按钮改为打开 LinkDialog，此处直接测同源 insertLinkMark
     resetDoc(view, '链接测试。')
     setCursor(1)
     await new Promise((r) => setTimeout(r, 30))
-    findBtn(toolbar!, '插入链接').click()
+    ;(window as any).__milkdownApi.insertLinkMark('https://ex.com/x.png')
     await new Promise((r) => setTimeout(r, 50))
     let linkHref: string | null = null
     view.state.doc.descendants((n: any) => {

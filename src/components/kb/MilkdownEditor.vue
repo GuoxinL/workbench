@@ -25,7 +25,8 @@ import { ElButton, ElIcon } from 'element-plus'
 // 代码块在 EP 中无合适图标或原 EP 图标与操作不符（ol 原 Sort、codeblock 原 Document），
 // 一律用同风格内联 SVG 绘制，保证工具栏视觉统一且图标与操作语义一致。
 import { List, Link, Picture, Minus } from '@element-plus/icons-vue'
-import { runCommand, insertImage, insertTable, type CmdType } from './editorCommands'
+import { runCommand, insertImage, insertTable, insertLinkMark, insertWikilink, type CmdType } from './editorCommands'
+import LinkDialog from './LinkDialog.vue'
 
 // ── 工具栏内联 SVG 图标（与 EP 图标同风格：1em、stroke currentColor）──
 const SVG_PROPS = {
@@ -198,6 +199,14 @@ const MilkdownCore = defineComponent({
             const ed = getEditor()
             if (ed) insertTable(ed, rows, cols)
           },
+          insertLinkMark: (href: string, text?: string) => {
+            const ed = getEditor()
+            if (ed) insertLinkMark(ed, href, text)
+          },
+          insertWikilink: (title: string) => {
+            const ed = getEditor()
+            if (ed) insertWikilink(ed, title)
+          },
         }
         scanning = true
         try {
@@ -218,8 +227,14 @@ const MilkdownCore = defineComponent({
     // runCommand / insertImage / insertTable，不再手写 ProseMirror transaction。
     const cmd = (type: string) => {
       const ed = getEditor()
-      if (ed) runCommand(ed, type as CmdType)
+      if (!ed) return
+      if (type === 'link') {
+        linkOpen.value = true // 链接由 LinkDialog 统一处理（双链/锚点/外部）
+        return
+      }
+      runCommand(ed, type as CmdType)
     }
+    const linkOpen = ref(false)
     const toolbarButtons = () => {
       type BtnDef =
         | { t: string; title: string; icon: any }
@@ -263,6 +278,12 @@ const MilkdownCore = defineComponent({
       const children = [
         editorView.value ? h('div', { class: 'md-toolbar' }, toolbarButtons()) : null,
         h(Milkdown),
+        linkOpen.value
+          ? h(LinkDialog, {
+              editor: getEditor(),
+              onClose: () => (linkOpen.value = false),
+            })
+          : null,
       ].filter(Boolean) as any[]
       return h('div', { class: 'md-editor-wrap' }, children)
     }

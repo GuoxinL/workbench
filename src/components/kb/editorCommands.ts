@@ -1,6 +1,7 @@
 import { commandsCtx, editorViewCtx } from '@milkdown/kit/core'
 import type { Editor } from '@milkdown/kit/core'
 import { TextSelection } from '@milkdown/prose/state'
+import { slug } from '@/lib/slug'
 import { openPrompt } from '@/composables/useDialog'
 import {
   toggleStrongCommand,
@@ -60,21 +61,31 @@ export function insertTable(ed: Editor, rows: number, cols: number): void {
   })
 }
 
-// 链接：弹窗收集 href；空选区时先插入文字并选中，再走官方 toggleLinkCommand 套标记
-async function runLink(ed: Editor): Promise<void> {
-  const href = await openPrompt({
-    title: '插入链接',
-    label: '链接 URL',
-    default: 'https://',
-    placeholder: 'https://example.com',
-    confirmText: '插入',
-  })
-  if (!href) return
+/** 插入双链 [[title]]：对选区文字套 wikilink mark（选区作别名）；空选区插入 title 文字再套 mark */
+export function insertWikilink(ed: Editor, title: string): void {
   ed.action((ctx) => {
     const view = ctx.get(editorViewCtx)
-    const { empty, from } = view.state.selection
+    const wl = view.state.schema.marks.wikilink
+    if (!wl) return
+    const { from, to, empty } = view.state.selection
+    const tr = view.state.tr
     if (empty) {
-      const text = '链接'
+      tr.insertText(title, from)
+      tr.addMark(from, from + title.length, wl.create({ title, slug: slug(title) }))
+    } else {
+      tr.addMark(from, to, wl.create({ title, slug: slug(title) }))
+    }
+    view.dispatch(tr)
+  })
+}
+
+/** 插入链接 mark（外部 URL 或本文锚点 #slug）：空选区先插 fallbackText 再套 link mark */
+export function insertLinkMark(ed: Editor, href: string, fallbackText?: string): void {
+  ed.action((ctx) => {
+    const view = ctx.get(editorViewCtx)
+    const { from, empty } = view.state.selection
+    if (empty) {
+      const text = fallbackText || href
       view.dispatch(view.state.tr.insertText(text, from))
       view.dispatch(
         view.state.tr.setSelection(
@@ -131,7 +142,7 @@ export async function runCommand(ed: Editor, type: CmdType): Promise<void> {
     case 'hr':
       return call(ed, insertHrCommand.key)
     case 'link':
-      return runLink(ed)
+      return // 由 Vue 层 LinkDialog 处理（runCommand 不直接处理链接）
     case 'image':
       return runImage(ed)
   }
