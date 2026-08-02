@@ -12,6 +12,7 @@ import RelatedPanel from './RelatedPanel.vue'
 import LinksPanel from './LinksPanel.vue'
 import EditorContextMenu from './EditorContextMenu.vue'
 import type { MenuAction } from './EditorContextMenu.vue'
+import LinkPopover, { type LinkKind } from './LinkPopover.vue'
 import { compressImage } from '@/lib/image'
 import { openConfirm, openTableDialog } from '@/composables/useDialog'
 
@@ -82,32 +83,51 @@ function onContentChange(md: string) {
 /** 外部 flush：ArticlesView 切走前落盘 */
 defineExpose({ flush })
 
-/** 编辑区点击：双链跳转/创建；锚点链接(#slug)滚动到本文标题 */
-async function onWikilinkClick(e: MouseEvent) {
+/** 链接点击：不直接跳转，在鼠标处弹小窗口提示打开 */
+const linkPopover = ref<{ x: number; y: number; kind: LinkKind; title?: string; slug?: string; href?: string; missing?: boolean; targetId?: string } | null>(null)
+
+function onLinkClick(e: MouseEvent) {
   const wl = (e.target as HTMLElement).closest('.wikilink') as HTMLElement | null
   if (wl) {
-    // 双链
     e.preventDefault()
-    const s = wl.getAttribute('data-slug')
-    if (!s) return
+    const title = wl.getAttribute('data-title') || ''
+    const s = wl.getAttribute('data-slug') || ''
     const target = store.articles.find((n) => !n.deleted && slug(n.title) === s)
-    if (target) {
-      emit('open', target.id)
+    linkPopover.value = { x: e.clientX, y: e.clientY, kind: 'wikilink', title, slug: s, missing: !target, targetId: target?.id || '' }
+    return
+  }
+  const anchor = (e.target as HTMLElement).closest('a[href^="#"]') as HTMLAnchorElement | null
+  if (anchor) {
+    e.preventDefault()
+    const id = decodeURIComponent((anchor.getAttribute('href') || '').slice(1))
+    linkPopover.value = { x: e.clientX, y: e.clientY, kind: 'anchor', slug: id }
+    return
+  }
+  const ext = (e.target as HTMLElement).closest('a[href^="http"]') as HTMLAnchorElement | null
+  if (ext) {
+    e.preventDefault()
+    linkPopover.value = { x: e.clientX, y: e.clientY, kind: 'external', href: ext.getAttribute('href') || '' }
+    return
+  }
+}
+
+async function onLinkAction() {
+  const p = linkPopover.value
+  if (!p) return
+  if (p.kind === 'wikilink') {
+    if (p.targetId) {
+      emit('open', p.targetId)
     } else {
-      const title = wl.getAttribute('data-title') || s
+      const title = p.title || p.slug || ''
       if (await openConfirm({ title: '创建文章', message: `创建文章「${title}」？`, confirmText: '创建' })) {
         const na = store.addArticle(title)
         emit('open', na.id)
       }
     }
-    return
-  }
-  // 锚点链接 a[href^="#"]：滚动到本文匹配标题
-  const anchor = (e.target as HTMLElement).closest('a[href^="#"]') as HTMLAnchorElement | null
-  if (anchor) {
-    e.preventDefault()
-    const id = decodeURIComponent(anchor.getAttribute('href')!.slice(1))
-    if (id) onJumpToHeading(id)
+  } else if (p.kind === 'anchor' && p.slug) {
+    onJumpToHeading(p.slug)
+  } else if (p.kind === 'external' && p.href) {
+    window.open(p.href, '_blank', 'noopener')
   }
 }
 
@@ -270,7 +290,7 @@ const fromTodoTitle = computed(() => {
     <div
       class="editor-scroll"
       :class="{ editing }"
-      @click="onWikilinkClick"
+      @click="onLinkClick"
       @contextmenu="onEditorContextMenu"
       @focusin="onEditorFocusIn"
       @focusout="onEditorFocusOut"
@@ -365,6 +385,20 @@ const fromTodoTitle = computed(() => {
       :actions="menuActions"
       @select="handleMenuAction"
       @close="ctxMenu.show = false"
+    />
+
+    <!-- 链接点击弹窗 -->
+    <LinkPopover
+      v-if="linkPopover"
+      :x="linkPopover.x"
+      :y="linkPopover.y"
+      :kind="linkPopover.kind"
+      :title="linkPopover.title"
+      :slug="linkPopover.slug"
+      :href="linkPopover.href"
+      :missing="linkPopover.missing"
+      @action="onLinkAction"
+      @close="linkPopover = null"
     />
   </section>
   <section v-else class="editor empty muted">

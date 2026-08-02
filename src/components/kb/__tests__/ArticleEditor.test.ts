@@ -16,8 +16,8 @@ beforeEach(() => {
   setActivePinia(createPinia())
 })
 
-describe('ArticleEditor 双链点击跳转', () => {
-  it('点击正文 wikilink 跳转到目标文章，且 preventDefault 阻止跳 /todos', async () => {
+describe('ArticleEditor 双链点击→弹窗确认→跳转', () => {
+  it('点击 wikilink 弹出小窗，点「打开文章」才跳转，且 preventDefault 阻止跳 /todos', async () => {
     const s = useDataStore()
     const a = s.addArticle('欢迎使用工作台')
     const b = s.addArticle('双链说明')
@@ -28,6 +28,8 @@ describe('ArticleEditor 双链点击跳转', () => {
         stubs: {
           MilkdownEditor: { template: '<div class="milkdown"></div>' },
           ElButton: { template: '<button><slot /></button>' },
+          ElSwitch: { template: '<span class="el-switch"></span>' },
+          ElTooltip: { template: '<span><slot /></span>' },
         },
       },
       attachTo: document.body,
@@ -43,12 +45,18 @@ describe('ArticleEditor 双链点击跳转', () => {
     scroll.appendChild(link)
 
     const spy = vi.spyOn(MouseEvent.prototype, 'preventDefault')
-    link.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 10, clientY: 10 }))
     await nextTick()
 
-    // 核心：阻止 <a href="#"> 默认导航，否则 hash 清空会重定向到 /todos
+    // 核心：阻止 <a href="#"> 默认导航
     expect(spy).toHaveBeenCalled()
-    // 正确跳转到目标文章
+    // 点击后弹窗出现，尚未跳转
+    const popBtn = document.querySelector('.link-pop .action') as HTMLButtonElement
+    expect(popBtn).toBeTruthy()
+    expect(wrapper.emitted('open')).toBeFalsy()
+    // 点「打开文章」→ 跳转
+    popBtn.click()
+    await nextTick()
     expect(wrapper.emitted('open')).toBeTruthy()
     expect(wrapper.emitted('open')![0]).toEqual([b.id])
 

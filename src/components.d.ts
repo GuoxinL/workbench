@@ -28,6 +28,7 @@ declare module 'vue' {
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
     LinkDialog: typeof import('./components/kb/LinkDialog.vue')['default']
+    LinkPopover: typeof import('./components/kb/LinkPopover.vue')['default']
     LinksPanel: typeof import('./components/kb/LinksPanel.vue')['default']
     MilkdownEditor: typeof import('./components/kb/MilkdownEditor.vue')['default']
     Pagination: typeof import('./components/common/Pagination.vue')['default']
