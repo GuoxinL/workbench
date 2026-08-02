@@ -130,16 +130,16 @@ a.wikilink.missing {
   font-family: 'Vollkorn', Palatino, 'PingFang SC', 'Source Han Serif SC', Georgia, serif;
   font-size: 19px;
   line-height: 1.53;
-  color: #333;
-  background: #fefefe;
+  color: var(--fg);
+  background: var(--card-bg);
   text-align: justify;
   -webkit-hyphens: auto;
   hyphens: auto;
   padding: 6px 4px;
 }
 .milkdown .ProseMirror {
-  background: #fefefe;
-  color: #333;
+  background: var(--card-bg);
+  color: var(--fg);
 }
 /* 标题：居中、正常字重；h2 下方 100px 居中细线；h3 斜体 */
 .milkdown h1 {
@@ -161,7 +161,7 @@ a.wikilink.missing {
   display: block;
   width: 100px;
   height: 1px;
-  background: #2f2f2f;
+  background: var(--fg);
   margin: 0.3em auto 0;
 }
 .milkdown h3 {
@@ -196,8 +196,8 @@ a.wikilink.missing {
 .milkdown blockquote {
   margin: 0 0 1em 1em;
   padding-left: 1em;
-  border-left: 1px solid #ddd;
-  color: #555;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
   font-style: normal;
 }
 /* 代码：行内 + 围栏 */
@@ -207,14 +207,14 @@ a.wikilink.missing {
   font-size: 0.9em;
 }
 .milkdown code {
-  background: #f5f5f5;
+  background: var(--bg);
   padding: 1px 5px;
   border-radius: 3px;
-  color: #c7254e;
+  color: var(--brand);
 }
 .milkdown pre {
-  background: #fefefe;
-  border: 1px solid #ddd;
+  background: var(--card-bg);
+  border: 1px solid var(--line);
   border-radius: 4px;
   padding: 6px 14px 8px;
   margin: 0 0 1.5em;
@@ -228,7 +228,7 @@ a.wikilink.missing {
 }
 /* 链接（非双链） */
 .milkdown a:not(.wikilink) {
-  color: #2484c1;
+  color: var(--brand);
   text-decoration: none;
 }
 .milkdown a:not(.wikilink):hover {
@@ -237,7 +237,7 @@ a.wikilink.missing {
 /* 分割线 */
 .milkdown hr {
   border: 0;
-  border-top: 1px solid #ddd;
+  border-top: 1px solid var(--line);
   margin: 2em 0;
   height: 0;
 }
@@ -256,7 +256,7 @@ a.wikilink.missing {
 .milkdown td,
 .milkdown .ProseMirror th,
 .milkdown .ProseMirror td {
-  border-top: 1px solid #ddd;
+  border-top: 1px solid var(--line);
   border-bottom: 0;
   border-left: 0;
   border-right: 0;
@@ -270,7 +270,7 @@ a.wikilink.missing {
   font-weight: bold;
   vertical-align: bottom;
   border-top: 0 !important;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid var(--line);
 }
 .milkdown tr:first-child th,
 .milkdown .ProseMirror tr:first-child th {
@@ -283,44 +283,4 @@ a.wikilink.missing {
   border: none;
 }
 
-/* 暗色：whitey 的深色改编（保持书卷结构，换深底浅字） */
-:root.dark .milkdown,
-:root.dark .milkdown .ProseMirror {
-  background: var(--bg);
-  color: #d6d6d6;
-}
-:root.dark .milkdown code {
-  background: #2a2a2a;
-  color: #e0a0b0;
-}
-:root.dark .milkdown pre {
-  background: var(--bg);
-  border-color: var(--line);
-}
-:root.dark .milkdown blockquote {
-  border-left-color: var(--line);
-  color: #aaa;
-}
-:root.dark .milkdown hr {
-  border-top-color: var(--line);
-}
-:root.dark .milkdown th,
-:root.dark .milkdown td,
-:root.dark .milkdown .ProseMirror th,
-:root.dark .milkdown .ProseMirror td {
-  border-top-color: var(--line);
-  background: transparent;
-}
-:root.dark .milkdown th,
-:root.dark .milkdown .ProseMirror th {
-  border-bottom-color: var(--line);
-  background: transparent;
-}
-:root.dark .milkdown table,
-:root.dark .milkdown .ProseMirror table {
-  border: 0;
-  background: transparent;
-}
-:root.dark .milkdown h2::after {
-  background: #d6d6d6;
-}
+/* 暗色无需手动覆写：上方所有颜色均用 token，:root.dark 已定义暗色变体，自动跟随 */
