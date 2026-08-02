@@ -50,10 +50,14 @@ function doAction() {
   close()
 }
 
-const style = computed(() => ({
-  left: Math.min(props.x, window.innerWidth - 280) + 'px',
-  top: Math.min(props.y + 8, window.innerHeight - 80) + 'px',
-}))
+const style = computed(() => {
+  const w = Math.min(320, window.innerWidth - 24)
+  return {
+    left: Math.min(props.x, window.innerWidth - w - 12) + 'px',
+    top: Math.min(props.y + 8, window.innerHeight - 80) + 'px',
+    maxWidth: w + 'px',
+  }
+})
 </script>
 
 <template>

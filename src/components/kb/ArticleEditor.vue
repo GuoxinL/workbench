@@ -642,7 +642,7 @@ const fromTodoTitle = computed(() => {
     height: 36px;
   }
   .outline-btn {
-    bottom: 64px;
+    bottom: 80px;
   }
 }
 </style>

@@ -114,6 +114,34 @@ body {
   background: rgba(0, 0, 0, 0.4) !important;
 }
 
+/* ── 手机端弹窗适配（≤768px）：长文本换行、宽度自适应，防溢出 ── */
+@media (max-width: 768px) {
+  .el-message {
+    max-width: 90vw !important;
+    min-width: 0 !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    padding: 10px 14px !important;
+    line-height: 1.5 !important;
+  }
+  .el-message-box {
+    width: 90vw !important;
+    max-width: 90vw !important;
+  }
+  .el-message-box__message {
+    white-space: normal !important;
+    word-break: break-word !important;
+  }
+  .el-dialog {
+    width: 92vw !important;
+    max-width: 92vw !important;
+    margin: 0 auto !important;
+  }
+  .el-drawer {
+    max-width: 92vw !important;
+  }
+}
+
 /* 双链（wikilink）通用样式 */
 a.wikilink {
   color: var(--brand);
