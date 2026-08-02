@@ -131,14 +131,14 @@ a.wikilink.missing {
   font-size: 19px;
   line-height: 1.53;
   color: var(--fg);
-  background: var(--card-bg);
+  background: transparent;
   text-align: justify;
   -webkit-hyphens: auto;
   hyphens: auto;
   padding: 6px 4px;
 }
 .milkdown .ProseMirror {
-  background: var(--card-bg);
+  background: transparent;
   color: var(--fg);
 }
 /* 标题：居中、正常字重；h2 下方 100px 居中细线；h3 斜体 */
