@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import SyncChip from '@/components/common/SyncChip.vue'
 import SettingsSheet from '@/components/common/SettingsSheet.vue'
+import DialogHost from '@/components/common/DialogHost.vue'
 import { useDataStore } from '@/stores/data'
 import { useTheme } from '@/composables/useTheme'
 
@@ -36,6 +37,7 @@ window.addEventListener('beforeunload', () => {
       <router-view />
     </main>
     <SettingsSheet v-model="settingsOpen" />
+    <DialogHost />
   </div>
 </template>
 

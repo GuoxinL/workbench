@@ -68,6 +68,42 @@ body {
   color: var(--muted);
 }
 
+/* ── EP 弹窗全局美化（teleport 到 body，需全局样式）── */
+.el-dialog {
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow-lg) !important;
+  overflow: hidden;
+}
+.el-dialog__header {
+  font-weight: 600;
+  padding-bottom: 12px;
+}
+.el-dialog__body {
+  padding-top: 16px;
+}
+.el-dialog__footer {
+  padding-top: 0;
+}
+.el-message-box {
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow-lg) !important;
+  border: none !important;
+  font-family: inherit;
+}
+.el-message {
+  border-radius: var(--radius-sm) !important;
+  box-shadow: var(--shadow-md) !important;
+  border: 1px solid var(--line) !important;
+  background: var(--card-bg) !important;
+  color: var(--fg) !important;
+}
+.el-drawer__header {
+  font-weight: 600;
+}
+.el-overlay {
+  background: rgba(0, 0, 0, 0.4) !important;
+}
+
 /* 双链（wikilink）通用样式 */
 a.wikilink {
   color: var(--brand);

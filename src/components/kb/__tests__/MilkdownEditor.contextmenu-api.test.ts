@@ -1,7 +1,15 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { TextSelection } from '@milkdown/prose/state'
 import MilkdownEditor from '@/components/kb/MilkdownEditor.vue'
+
+// 链接命令改走弹窗（openPrompt），mock 之；表格/图片仍走纯函数 insertTableNode/insertImageNode
+vi.mock('@/composables/useDialog', () => ({
+  openPrompt: vi.fn(() => Promise.resolve('https://example.com')),
+  openTableDialog: vi.fn(() => Promise.resolve({ rows: 3, cols: 2 })),
+  openConfirm: vi.fn(() => Promise.resolve(true)),
+  useDialog: () => ({ current: { value: null } }),
+}))
 
 /**
  * 右键菜单「同源」验证：右键菜单的所有功能项不再自行插入原始 markdown 文本，
@@ -48,11 +56,6 @@ describe('MilkdownEditor 右键菜单同源命令（与工具栏一致）', () =
   }
 
   it('右键菜单所有项通过同源命令生成正确节点/标记', async () => {
-    // 链接命令内部用 prompt 收集文字与 URL，jsdom 下默认返回 null，需桩化
-    const origPrompt = window.prompt
-    window.prompt = ((msg: string) =>
-      msg.includes('URL') ? 'https://example.com' : '链接文字') as any
-
     const wrapper = mount(MilkdownEditor, {
       props: { modelValue: '测试内容。' },
       attachTo: document.body,
@@ -111,7 +114,7 @@ describe('MilkdownEditor 右键菜单同源命令（与工具栏一致）', () =
     // 7) 链接：空选区下应插入带 link 标记的文字，href 正确
     resetDoc(view, '链接测试。')
     setCursor(view, 1)
-    api.cmd('link')
+    await api.cmd('link')
     await new Promise((r) => setTimeout(r, 30))
     let linkHref: string | null = null
     view.state.doc.descendants((n: any) => {
@@ -152,7 +155,6 @@ describe('MilkdownEditor 右键菜单同源命令（与工具栏一致）', () =
     expect(cells + headerCells).toBe(6) // 3 行 × 2 列
     expect(headerCells).toBe(2) // 表头行 2 个 table_header
 
-    window.prompt = origPrompt
     wrapper.unmount()
   }, 30000)
 

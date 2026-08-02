@@ -13,6 +13,7 @@ import LinksPanel from './LinksPanel.vue'
 import EditorContextMenu from './EditorContextMenu.vue'
 import type { MenuAction } from './EditorContextMenu.vue'
 import { compressImage } from '@/lib/image'
+import { openConfirm, openTableDialog } from '@/composables/useDialog'
 
 const props = defineProps<{ article: Article | null }>()
 const emit = defineEmits<{ open: [string]; changed: [] }>()
@@ -82,7 +83,7 @@ function onContentChange(md: string) {
 defineExpose({ flush })
 
 /** 双链点击：wikilink 的 data-slug → 查找文章 → 跳转；不存在则提示创建 */
-function onWikilinkClick(e: MouseEvent) {
+async function onWikilinkClick(e: MouseEvent) {
   const el = (e.target as HTMLElement).closest('.wikilink') as HTMLElement | null
   if (!el) return
   // 必须阻止 <a href="#"> 的默认导航：否则 hash 被清空为 '#'（路由 '/'），
@@ -95,7 +96,7 @@ function onWikilinkClick(e: MouseEvent) {
     emit('open', target.id)
   } else {
     const title = el.getAttribute('data-title') || s
-    if (confirm(`创建文章「${title}」？`)) {
+    if (await openConfirm({ title: '创建文章', message: `创建文章「${title}」？`, confirmText: '创建' })) {
       const na = store.addArticle(title)
       emit('open', na.id)
     }
@@ -157,11 +158,9 @@ async function handleMenuAction(key: string, _a: MenuAction) {
     }
     input.click()
   } else if (key === 'table') {
-    const rows = prompt('表格行数（默认 3）', '3')
-    const cols = prompt('表格列数（默认 3）', '3')
-    const r = parseInt(rows || '3', 10) || 3
-    const c = parseInt(cols || '3', 10) || 3
-    api.insertTableNode(r, c)
+    const r = await openTableDialog()
+    if (!r) return
+    api.insertTableNode(r.rows, r.cols)
   } else if (key === 'link') {
     // 与工具栏「插入链接」同源：内部 prompt 收集文字 + URL
     api.cmd('link')

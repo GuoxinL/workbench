@@ -1,6 +1,7 @@
 import { commandsCtx, editorViewCtx } from '@milkdown/kit/core'
 import type { Editor } from '@milkdown/kit/core'
 import { TextSelection } from '@milkdown/prose/state'
+import { openPrompt } from '@/composables/useDialog'
 import {
   toggleStrongCommand,
   toggleEmphasisCommand,
@@ -59,15 +60,21 @@ export function insertTable(ed: Editor, rows: number, cols: number): void {
   })
 }
 
-// 链接：prompt 收集 href；空选区时先插入文字并选中，再走官方 toggleLinkCommand 套标记
-function runLink(ed: Editor): void {
-  const href = prompt('链接 URL：', 'https://')
+// 链接：弹窗收集 href；空选区时先插入文字并选中，再走官方 toggleLinkCommand 套标记
+async function runLink(ed: Editor): Promise<void> {
+  const href = await openPrompt({
+    title: '插入链接',
+    label: '链接 URL',
+    default: 'https://',
+    placeholder: 'https://example.com',
+    confirmText: '插入',
+  })
   if (!href) return
   ed.action((ctx) => {
     const view = ctx.get(editorViewCtx)
     const { empty, from } = view.state.selection
     if (empty) {
-      const text = prompt('链接文字：') || '链接'
+      const text = '链接'
       view.dispatch(view.state.tr.insertText(text, from))
       view.dispatch(
         view.state.tr.setSelection(
@@ -79,16 +86,27 @@ function runLink(ed: Editor): void {
   })
 }
 
-// 图片（工具栏）：prompt 收集 URL + 描述，再调 insertImage
-function runImage(ed: Editor): void {
-  const src = prompt('图片 URL：', 'https://')
+// 图片（工具栏）：弹窗收集 URL + 描述，再调 insertImage
+async function runImage(ed: Editor): Promise<void> {
+  const src = await openPrompt({
+    title: '插入图片',
+    label: '图片 URL',
+    default: 'https://',
+    placeholder: 'https://example.com/x.png',
+    confirmText: '插入',
+  })
   if (!src) return
-  const alt = prompt('图片描述（可选）：') || ''
-  insertImage(ed, src, alt)
+  const alt = await openPrompt({
+    title: '图片描述',
+    label: '描述（可选）',
+    placeholder: '图片说明',
+    confirmText: '确定',
+  })
+  insertImage(ed, src, alt || '')
 }
 
 /** 统一命令入口：工具栏按钮与右键菜单均调用此函数 */
-export function runCommand(ed: Editor, type: CmdType): void {
+export async function runCommand(ed: Editor, type: CmdType): Promise<void> {
   switch (type) {
     case 'bold':
       return call(ed, toggleStrongCommand.key)

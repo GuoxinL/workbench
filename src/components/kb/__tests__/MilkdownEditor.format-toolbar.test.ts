@@ -1,7 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { TextSelection } from '@milkdown/prose/state'
 import MilkdownEditor from '@/components/kb/MilkdownEditor.vue'
+
+// 链接/图片命令改走弹窗（openPrompt），mock 之
+vi.mock('@/composables/useDialog', () => ({
+  openPrompt: vi.fn(() => Promise.resolve('https://ex.com/x.png')),
+  openTableDialog: vi.fn(() => Promise.resolve({ rows: 3, cols: 3 })),
+  openConfirm: vi.fn(() => Promise.resolve(true)),
+  useDialog: () => ({ current: { value: null } }),
+}))
 
 /**
  * 常驻格式工具栏命令验证：挂载真实 MilkdownEditor（单次挂载），等待工具栏就绪后，
@@ -159,13 +167,6 @@ describe('MilkdownEditor 常驻格式工具栏命令', () => {
       expect(hasHr).toBe(true)
     }
 
-    // 设置/恢复 prompt 桩：链接、图片按钮内部用 prompt 收集输入
-    const origPrompt = window.prompt
-    window.prompt = ((msg: string) => {
-      if (msg.includes('URL') || msg.includes('图片 URL')) return 'https://ex.com/x.png'
-      if (msg.includes('描述')) return '图'
-      return '文字'
-    }) as any
     const setCursor = (pos: number) =>
       view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)))
     const hasNode = (name: string) => {
@@ -227,7 +228,6 @@ describe('MilkdownEditor 常驻格式工具栏命令', () => {
     })
     expect(imgSrc).toBe('https://ex.com/x.png')
 
-    window.prompt = origPrompt
     wrapper.unmount()
   }, 30000)
 })
