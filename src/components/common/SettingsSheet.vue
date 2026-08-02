@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import type { Config } from '@/types'
 import { useDataStore } from '@/stores/data'
-import { runDiagnose, runPublicDiagnose, defaultPublicRepo, type DiagStep } from '@/services/github/diagnose'
+import { runDiagnose, defaultPublicRepo, type DiagStep } from '@/services/github/diagnose'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
@@ -23,22 +23,19 @@ watch(visible, (v) => {
 })
 
 const steps = ref<DiagStep[]>([])
-const pubSteps = ref<DiagStep[]>([])
 const diagRunning = ref(false)
 
 const repoValid = computed(() => /^[^/\s]+\/[^/\s]+$/.test(cfg.value.repo))
 const canSave = computed(() => cfg.value.enabled && repoValid.value && !!cfg.value.token)
 
-/** 测试连接（融合私有库 + 公开库诊断）：跑两套诊断并显示步骤列表 */
+/** 测试连接（融合私有库 + 公开库诊断）：跑完整诊断并显示单一步骤列表 */
 async function test() {
   diagRunning.value = true
   steps.value = []
-  pubSteps.value = []
   try {
     steps.value = await runDiagnose(cfg.value)
-    pubSteps.value = await runPublicDiagnose(cfg.value)
-    const ok = steps.value.length && steps.value.every((s) => s.ok) && pubSteps.value.every((s) => s.ok)
-    if (ok) ElMessage.success('私有库 + 公开库诊断全部通过')
+    const ok = steps.value.length && steps.value.every((s) => s.ok)
+    if (ok) ElMessage.success('诊断全部通过')
   } finally {
     diagRunning.value = false
   }
@@ -88,7 +85,7 @@ function exportBackup() {
         <el-input v-model="cfg.token" type="password" show-password placeholder="ghp_…（仅存本地，不落库）" />
       </label>
       <label class="field">
-        <span>轮询间隔（秒，5–300）</span>
+        <span>同步间隔（秒，5–300）</span>
         <el-input-number v-model="cfg.poll" :min="5" :max="300" />
       </label>
       <label class="field">
@@ -104,15 +101,8 @@ function exportBackup() {
       </div>
 
       <ul v-if="steps.length" class="diag">
-        <li class="diag-title">私有库 · {{ cfg.repo }}</li>
+        <li class="diag-title">诊断 · {{ cfg.repo }}{{ cfg.publicRepo ? ' + ' + cfg.publicRepo : '' }}</li>
         <li v-for="s in steps" :key="s.name" :class="{ ok: s.ok, fail: !s.ok }">
-          <span class="mark">{{ s.ok ? '✓' : '✗' }}</span>
-          <b>{{ s.name }}</b> —— {{ s.detail }}
-        </li>
-      </ul>
-      <ul v-if="pubSteps.length" class="diag">
-        <li class="diag-title">公开库 · {{ cfg.publicRepo || defaultPublicRepo(cfg) }}</li>
-        <li v-for="s in pubSteps" :key="s.name" :class="{ ok: s.ok, fail: !s.ok }">
           <span class="mark">{{ s.ok ? '✓' : '✗' }}</span>
           <b>{{ s.name }}</b> —— {{ s.detail }}
         </li>

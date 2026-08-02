@@ -79,19 +79,6 @@ export function defaultPublicRepo(config: Config): string {
   return owner ? `${owner}/workbench-public` : ''
 }
 
-/** 公开仓库诊断：对公开镜像库跑与私有库相同的诊断流程（连接 + 写权限）。 */
-export async function runPublicDiagnose(config: Config): Promise<DiagStep[]> {
-  const publicRepo = (config.publicRepo || '').trim() || defaultPublicRepo(config)
-  if (!/^[^/\s]+\/[^/\s]+$/.test(publicRepo)) {
-    return [{ name: '公开仓库配置', ok: false, detail: 'publicRepo 格式应为 owner/repo（默认 owner/workbench-public）' }]
-  }
-  const mirrorCfg: Config = { ...config, repo: publicRepo }
-  const steps = await runDiagnose(mirrorCfg)
-  // 首步标注目标仓库，便于区分
-  if (steps[0]) steps[0] = { ...steps[0], name: `公开仓库 ${publicRepo}` }
-  return steps
-}
-
 /** S18：五步诊断——逐步返回步骤状态，失败即中断。 */
 export async function runDiagnose(config: Config): Promise<DiagStep[]> {
   const steps: DiagStep[] = []
@@ -125,6 +112,17 @@ export async function runDiagnose(config: Config): Promise<DiagStep[]> {
     else steps.push({ name: '数据文件', ok: false, detail: `检查失败 HTTP ${res.status}` })
   } catch {
     steps.push({ name: '数据文件', ok: false, detail: '网络错误' })
+  }
+
+  // 公开镜像库检查（融合进私有库诊断，仅当 publicRepo 显式配置）
+  const publicRepo = (config.publicRepo || '').trim()
+  if (publicRepo && /^[^/\s]+\/[^/\s]+$/.test(publicRepo)) {
+    const mirrorCfg: Config = { ...config, repo: publicRepo }
+    const pubConn = await testConnection(mirrorCfg)
+    steps.push({ name: `公开库 ${publicRepo}`, ok: pubConn.ok, detail: pubConn.ok ? '可达' : pubConn.message })
+    if (pubConn.ok) {
+      steps.push({ name: '公开库写权限', ok: !!pubConn.canPush, detail: pubConn.canPush ? '具备 push 权限' : '令牌缺少该库写权限' })
+    }
   }
   return steps
 }
