@@ -318,8 +318,8 @@ export default defineComponent({
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  padding: 6px 8px;
+  gap: 2px;
+  padding: 4px 6px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--card-bg);
@@ -330,9 +330,11 @@ export default defineComponent({
   top: -16px;
   z-index: 20;
 }
-/* 复用 Element Plus 按钮外观，仅做间距统一（去掉相邻按钮的默认外边距） */
+/* 复用 Element Plus 按钮外观，收紧内边距让按钮更紧凑 */
 .md-toolbar :deep(.el-button) {
   margin: 0;
+  padding: 4px 7px;
+  min-height: 0;
 }
 .md-toolbar :deep(.el-button .el-icon),
 .md-toolbar :deep(.el-button svg) {
@@ -340,9 +342,9 @@ export default defineComponent({
 }
 .tb-sep {
   width: 1px;
-  height: 20px;
+  height: 18px;
   background: var(--line);
-  margin: 0 2px;
+  margin: 0 1px;
   align-self: center;
 }
 </style>
