@@ -87,6 +87,7 @@ watch(inputRef, (el) => el?.focus?.())
 
       <!-- 三种链接说明 -->
       <div class="hints muted">
+        <span>可引用：</span><span>·</span>
         <span>双链 [[文章]]</span><span>·</span>
         <span>本文标题锚点 #标题</span><span>·</span>
         <span>外部 URL</span>
