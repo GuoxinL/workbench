@@ -205,27 +205,40 @@ a.wikilink.missing {
   margin: 2em 0;
   height: 0;
 }
-/* 表格 */
-.milkdown table {
+/* 表格：whitey 风格——仅单元格上边线 #ddd，无外框，表头无底色仅加粗。
+   gfm 表格结构为 table>tr>th/td（无 thead），故直接选 th；
+   用 .milkdown .ProseMirror 提升特异性，压过 nord/`prose` 的 #333 外框与 th/td 灰底。 */
+.milkdown table,
+.milkdown .ProseMirror table {
   width: 100%;
   border-collapse: collapse;
+  border: 0;
   margin: 0 0 1.33em;
+  background: transparent;
 }
 .milkdown th,
-.milkdown td {
+.milkdown td,
+.milkdown .ProseMirror th,
+.milkdown .ProseMirror td {
   border-top: 1px solid #ddd;
+  border-bottom: 0;
+  border-left: 0;
+  border-right: 0;
   padding: 8px;
   line-height: 1.33;
   vertical-align: top;
+  background: transparent !important;
 }
-.milkdown thead th {
+.milkdown th,
+.milkdown .ProseMirror th {
   font-weight: bold;
   vertical-align: bottom;
+  border-top: 0 !important;
   border-bottom: 1px solid #ddd;
 }
-.milkdown thead tr:first-child th,
-.milkdown thead tr:first-child td {
-  border-top: 0;
+.milkdown tr:first-child th,
+.milkdown .ProseMirror tr:first-child th {
+  border-top: 0 !important;
 }
 /* 图片 */
 .milkdown img {
@@ -256,11 +269,21 @@ a.wikilink.missing {
   border-top-color: var(--line);
 }
 :root.dark .milkdown th,
-:root.dark .milkdown td {
+:root.dark .milkdown td,
+:root.dark .milkdown .ProseMirror th,
+:root.dark .milkdown .ProseMirror td {
   border-top-color: var(--line);
+  background: transparent;
 }
-:root.dark .milkdown thead th {
+:root.dark .milkdown th,
+:root.dark .milkdown .ProseMirror th {
   border-bottom-color: var(--line);
+  background: transparent;
+}
+:root.dark .milkdown table,
+:root.dark .milkdown .ProseMirror table {
+  border: 0;
+  background: transparent;
 }
 :root.dark .milkdown h2::after {
   background: #d6d6d6;
