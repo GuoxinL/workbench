@@ -42,7 +42,7 @@ export async function getFile(path: string, config: Config): Promise<FileContent
   }
 }
 
-/** 写入单文件；带 sha 即乐观锁，冲突抛 ConflictError（S10）。 */
+/** 写入单文件（文本）；带 sha 即乐观锁，冲突抛 ConflictError（S10）。 */
 export async function putFile(
   path: string,
   content: string,
@@ -50,7 +50,21 @@ export async function putFile(
   config: Config,
   message: string,
 ): Promise<string> {
-  const body: Record<string, unknown> = { message, content: toBase64(content) }
+  return putFileBase64(path, toBase64(content), sha, config, message)
+}
+
+/**
+ * 写入单文件（已是 base64 的字节内容，如图片二进制）；不再二次编码。
+ * 用于 Contents API 承载非文本资源（P2 ⑥ git 图片直传）。
+ */
+export async function putFileBase64(
+  path: string,
+  base64: string,
+  sha: string | undefined,
+  config: Config,
+  message: string,
+): Promise<string> {
+  const body: Record<string, unknown> = { message, content: base64 }
   if (sha) body.sha = sha
   try {
     const { data, sha: newSha } = await githubRequest(path, { method: 'PUT', body }, config)

@@ -69,4 +69,24 @@ describe('renderMarkdown', () => {
     expect(a.getAttribute('data-slug')).toBe('a" onmouseover="alert(1)')
     expect(a.textContent).toBe('a" onmouseover="alert(1)')
   })
+
+  // ── P2 ⑥ 图片 key 渲染端还原 ──
+  it('resolveImage 把 git key（images/）改写为 raw 直链', () => {
+    const html = renderMarkdown('![图](images/ab12.jpg)', {
+      resolveImage: (k) =>
+        k.startsWith('images/') ? `https://raw.githubusercontent.com/o/r/main/${k}` : k,
+    })
+    expect(html).toContain('src="https://raw.githubusercontent.com/o/r/main/images/ab12.jpg"')
+  })
+
+  it('本地 key（local-img:）经 DOMPurify 白名单放行，原样保留', () => {
+    const html = renderMarkdown('![图](local-img:deadbeef)')
+    // 白名单未放行则会被洗成空 src / 移除整张 img
+    expect(html).toContain('src="local-img:deadbeef"')
+  })
+
+  it('未传 resolveImage 时保留原始 src', () => {
+    const html = renderMarkdown('![图](https://example.com/a.png)')
+    expect(html).toContain('src="https://example.com/a.png"')
+  })
 })

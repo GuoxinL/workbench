@@ -10,6 +10,8 @@ import { Milkdown, MilkdownProvider, useEditor, useInstance } from '@milkdown/vu
 import { wikilinkSchema, wikilinkInputRule, wikilinkRemark, wikilinkMdHandler } from '@/lib/markdown/milkdown-wikilink'
 import { scanConvertWikilinks } from '@/lib/markdown/scan-wikilinks'
 import { pasteImagePlugin } from '@/lib/markdown/paste-image'
+import { resolveEditorImagesPlugin } from '@/lib/markdown/resolve-image-plugin'
+import { useDataStore } from '@/stores/data'
 import { codeMirror } from '@milkdown/crepe/feature/code-mirror'
 import { toolbar } from '@milkdown/crepe/feature/toolbar'
 import { table } from '@milkdown/crepe/feature/table'
@@ -129,6 +131,11 @@ const MilkdownCore = defineComponent({
     // 编辑器视图实例：仅用于就绪门控（工具栏渲染条件）与暴露给测试。
     // 命令派发不再依赖缓存视图——统一走 editorCommands 里的 ed.action(commandsCtx)。
     const editorView = ref<EditorView | null>(null)
+    // 图云层上传（P2 ⑥）：粘贴/选图时把压缩后的图上传到本地 IDB 或 git，返回可引用 key 嵌入正文。
+    // 取函数引用（稳定），未启用同步时工厂自动降级为本地 IDB 分支。
+    const dataStore = useDataStore()
+    const upload = dataStore.uploadImage
+    const resolve = dataStore.resolveImage
 
     useEditor((root) =>
       Editor.make()
@@ -156,7 +163,8 @@ const MilkdownCore = defineComponent({
         .use(wikilinkSchema)
         .use(wikilinkRemark)
         .use(wikilinkInputRule)
-        .use($prose(() => pasteImagePlugin()))
+        .use($prose(() => pasteImagePlugin({ upload })))
+        .use($prose(() => resolveEditorImagesPlugin(resolve)))
         .use(listener),
     )
 
@@ -293,6 +301,7 @@ const MilkdownCore = defineComponent({
         imageOpen.value
           ? h(ImageDialog, {
               editor: getEditor(),
+              upload,
               onClose: () => (imageOpen.value = false),
             })
           : null,
