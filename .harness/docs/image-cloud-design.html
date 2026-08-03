@@ -94,6 +94,7 @@
       <li><a href="#s11">测试策略</a></li>
       <li><a href="#s12">待确认事项</a></li>
       <li><a href="#s13">落地步骤建议</a></li>
+      <li><a href="#s14">参考实现（Prior Art）</a></li>
     </ol>
   </nav>
 
@@ -142,16 +143,17 @@ export interface ImageHostConfig {
   [key: string]: unknown
 }
 
-/** 设置页动态渲染字段的声明——AI/开发者据此知道要配什么 */
+/** 设置页动态渲染字段的声明——字段命名对齐 PicGo Uploader 契约（见 §14），便于复用社区上传器逻辑 */
 export interface ConfigField {
-  key: string
-  label: string
-  type: 'text' | 'password' | 'url' | 'number' | 'select'
+  name: string                                   // 原 key：字段名，作配置对象的 key
+  alias?: string                                 // 原 label：GUI 表单标题
+  type: 'input' | 'password' | 'url' | 'number' | 'list' | 'confirm'
   required?: boolean
-  placeholder?: string
-  secret?: boolean            // true=敏感字段，仅 signerUrl 模式下不落前端（由服务端持有）
-  help?: string
-  options?: { label: string; value: string }[]   // type='select' 用
+  default?: unknown                              // 默认值（对齐 PicGo）
+  message?: string                               // 原 placeholder：占位/提示
+  choices?: { name: string; value: string }[]    // 原 options：对齐 PicGo choices（type='list' 用）
+  tips?: string                                  // 原 help：tooltip（对齐 PicGo tips）
+  secret?: boolean                               // 本方案扩展：标记敏感字段，remote 模式下不落前端（由服务端持有）
 }</code></pre>
 
   <h3>3.2 上传凭证（前端直传用）</h3>
@@ -279,11 +281,11 @@ export const templateAdapter: ImageHostAdapter = {
   name: '模板图云（请复制改名）',
   signerKind: 'remote',                    // 生产用 remote
   configSchema: [
-    { key: 'bucket', label: '存储桶', type: 'text', required: true, placeholder: 'my-bucket' },
-    { key: 'region', label: '地域', type: 'text', required: false },
-    { key: 'cdnHost', label: 'CDN 域名(可选)', type: 'url', required: false },
-    { key: 'publicRead', label: '公开读', type: 'select', required: false,
-      options: [{ label: '是', value: 'true' }, { label: '否', value: 'false' }] },
+    { name: 'bucket', alias: '存储桶', type: 'input', required: true, message: 'my-bucket' },
+    { name: 'region', alias: '地域', type: 'input', required: false },
+    { name: 'cdnHost', alias: 'CDN 域名(可选)', type: 'url', required: false },
+    { name: 'publicRead', alias: '公开读', type: 'list', required: false,
+      choices: [{ name: '是', value: 'true' }, { name: '否', value: 'false' }] },
   ],
   isConfigComplete(cfg) {
     return !!cfg.signerUrl &amp;&amp; !!cfg.bucket
@@ -332,7 +334,7 @@ function stripSecret(cfg: ImageHostConfig): Record&lt;string, unknown&gt; {
     <li>在签名服务（Worker/云函数）加该 provider 的签名分支，返回对应 <code>UploadCredential</code>。</li>
     <li>文件底部 <code>registerImageHost(xxxAdapter)</code>；设置页自动出现该选项。</li>
   </ol>
-  <div class="note">第 3 步前端在模板里已通用，多数图云<b>只需改第 2、4 步</b>。</div>
+  <div class="note">第 3 步前端在模板里已通用，多数图云<b>只需改第 2、4 步</b>。<br/>另：<code>ConfigField</code> 字段命名已对齐 PicGo（见 §14），可低成本复用社区上传器逻辑。</div>
 
   <h2 id="s9">9. 与现有同步的衔接（零侵入）</h2>
   <ul>
@@ -377,6 +379,39 @@ function stripSecret(cfg: ImageHostConfig): Record&lt;string, unknown&gt; {
     <li>单测 + 手动验证（含敏感密钥不落前端核查）。</li>
     <li>进入 SOP 的 UT / Deploy / IT / Docs / Review / Commit。</li>
   </ol>
+
+  <h2 id="s14">14. 参考实现（Prior Art）</h2>
+  <p>本方案并非凭空设计，以下成熟实现已验证「可插拔图云 + 配置驱动 UI + 服务端签名」的可行性，可直接借鉴其契约：</p>
+
+  <h3>14.1 PicGo（Uploader 插件契约）—— 主参考</h3>
+  <p>PicGo 的每个图床即一个 Uploader 插件，通过 <code>ctx.helper.uploader.register(id, { handle, config })</code> 自注册，<code>config(ctx)</code> 返回字段数组由 CLI/GUI 自动渲染成表单。其字段形态与本方案的 <code>ConfigField</code> 几乎同构：</p>
+  <table>
+    <thead><tr><th>本方案 ConfigField</th><th>PicGo 字段</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>name</code></td><td><code>name</code></td><td>字段名，作配置 key</td></tr>
+      <tr><td><code>alias</code></td><td><code>alias</code></td><td>GUI 表单标题</td></tr>
+      <tr><td><code>type</code></td><td><code>type</code>（input/password/list/confirm/editor/checkbox）</td><td>渲染类型</td></tr>
+      <tr><td><code>required</code></td><td><code>required</code></td><td>必填</td></tr>
+      <tr><td><code>default</code></td><td><code>default</code></td><td>默认值（对齐新增）</td></tr>
+      <tr><td><code>message</code></td><td><code>message</code></td><td>占位/提示</td></tr>
+      <tr><td><code>choices</code></td><td><code>choices</code>（[{name,value}]）</td><td>下拉项（原 options）</td></tr>
+      <tr><td><code>tips</code></td><td><code>tips</code></td><td>tooltip（原 help）</td></tr>
+      <tr><td><code>secret</code></td><td>—（本方案扩展）</td><td>标记敏感字段，remote 模式不落前端</td></tr>
+    </tbody>
+  </table>
+  <p>借鉴点：<b>插件自注册 + config 字段数组 + 按 required 自动校验</b>，已被社区几十种图床（七牛/COS/OSS/R2/GitHub）验证。本方案 §3.1 的 <code>ConfigField</code> 已直接对齐该命名，未来可低成本「翻译」复用社区上传器逻辑。</p>
+
+  <h3>14.2 S3 预签名 PUT 范式 —— 签名服务端通用分支</h3>
+  <p>Cloudflare R2 / 阿里云 OSS / 腾讯云 COS 均实现同一套 S3 兼容预签名上传。意味着<b>一个 <code>s3-compatible</code> 适配器</b>即可覆盖 R2+OSS+COS 三家，仅需配置 <code>endpoint/region/bucket</code>；签名服务端（Worker）也只需一个通用 S3-V4 签名分支。</p>
+
+  <h3>14.3 upgit / 自定义 HTTP 后端 —— remote 签名模式来源</h3>
+  <p>upgit 等工具支持「调一个外部 HTTP 接口返回 URL」作为自定义后端。这正对应本方案的 <code>signerKind:'remote'</code> + <code>signerUrl</code>：<b>外部签名服务返回一次性上传凭证/URL</b> 是通用范式，非本方案独创。</p>
+
+  <h3>14.4 Lsky Pro（兰空图床）—— 自托管图云参考</h3>
+  <p>开源自托管图床，提供固定 REST API。若不想用商业云，直接照其 API 写一个 adapter 即可，对应 <code>signerKind:'remote'</code> 的另一种签名后端形态。</p>
+
+  <h3>14.5 关键差异（必须保留本方案设计）</h3>
+  <div class="bad">PicGo 是桌面应用（Electron），密钥存本地配置，无「服务端签名」概念；本方案是<b>浏览器应用</b>，必须守红线 5——密钥不下发前端。因此：<b>借 PicGo 的插件契约与 config 字段形态，但保留本方案的 <code>signerKind:'remote'</code> + <code>signerUrl</code> 服务端签名层</b>（PicGo 没有、而我们必须有）。</div>
 
   <footer>
     本文档为设计稿，配套决策见 §12 待确认事项。确认后进入 SOP 实现，代码落点以 §3 / §13 为准。<br/>

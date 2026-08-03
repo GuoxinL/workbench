@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>workbench 数据存储层 · 既定目标架构设计</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#161c24; --panel2:#1c2530; --ink:#e6edf3; --muted:#93a1b0;
+    --line:#2a3441; --accent:#4cc2ff; --accent2:#7ee787; --warn:#f0a868; --danger:#ff7b72;
+    --code:#0b0f14; --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;}
+  header{padding:48px 24px 28px;background:linear-gradient(180deg,#11202e,#0f1419);
+    border-bottom:1px solid var(--line);}
+  header h1{margin:0 0 8px;font-size:28px;letter-spacing:.5px}
+  header p{margin:0;color:var(--muted)}
+  nav{position:sticky;top:0;z-index:5;background:rgba(15,20,25,.92);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);padding:10px 24px;display:flex;gap:18px;flex-wrap:wrap;
+    font-size:13px}
+  nav a{color:var(--muted);text-decoration:none}
+  nav a:hover{color:var(--accent)}
+  main{max-width:980px;margin:0 auto;padding:32px 24px 80px}
+  section{margin:40px 0}
+  h2{font-size:22px;border-left:4px solid var(--accent);padding-left:12px;margin:32px 0 16px}
+  h3{font-size:17px;color:var(--accent2);margin:22px 0 8px}
+  p{color:#cdd9e5}
+  code{background:var(--code);color:#ffd596;padding:1px 6px;border-radius:5px;font-size:13px}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 16px;overflow:auto;font-size:13px;line-height:1.55}
+  pre code{background:none;color:#c9d1d9;padding:0}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--muted);font-weight:600}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 18px;margin:14px 0}
+  .layer{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin:10px 0}
+  .layer .box{flex:1;min-width:150px;border:1px solid var(--line);background:var(--panel);
+    padding:12px;border-radius:8px;margin:4px;position:relative}
+  .layer .box b{color:var(--accent)}
+  .layer .box small{color:var(--muted);display:block;margin-top:4px;font-size:12px}
+  .arrow{text-align:center;color:var(--muted);font-size:12px;margin:2px 0}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;margin-right:6px}
+  .t-ok{background:rgba(126,231,135,.15);color:var(--accent2)}
+  .t-warn{background:rgba(240,168,104,.15);color:var(--warn)}
+  .t-danger{background:rgba(255,123,114,.15);color:var(--danger)}
+  .t-info{background:rgba(76,194,255,.15);color:var(--accent)}
+  .note{border-left:3px solid var(--warn);background:rgba(240,168,104,.08);
+    padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;color:#e8d3b5}
+  .key{color:var(--accent)}
+  .muted{color:var(--muted)}
+  footer{border-top:1px solid var(--line);padding:20px 24px;color:var(--muted);font-size:12px;text-align:center}
+  ul{color:#cdd9e5}
+  li{margin:4px 0}
+  .mermaid{margin:18px 0;background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius);padding:8px 14px;overflow:auto}
+</style>
+</head>
+<body>
+<header>
+  <h1>workbench · 数据存储层既定目标架构设计</h1>
+  <p>纯静态 PWA（渐进式 Web 应用） · 待办（Todo）卡片 + 双向链接（bidirectional link）笔记 · 本地 IndexedDB（浏览器本地数据库） ↔ 远端 GitHub Contents API（GitHub 内容接口）双向同步（local-first 本地优先）</p>
+</header>
+
+<nav>
+  <a href="#s0">§0 概述</a>
+  <a href="#s1">§1 目标架构（分层模型）</a>
+  <a href="#s2">§2 数据模型与存储结构</a>
+  <a href="#s3">§3 存储层 / 数据层接口契约</a>
+  <a href="#s4">§4 分页与索引</a>
+  <a href="#s5">§5 同步机制</a>
+  <a href="#s6">§6 图云层（ImageCloudLayer）</a>
+  <a href="#s7">§7 生命周期与极简模式</a>
+  <a href="#s8">§8 落地步骤与风险</a>
+</nav>
+
+<main>
+
+<!-- §0 -->
+<section id="s0">
+  <h2>§0 概述</h2>
+  <p>数据层是 workbench 的<strong>唯一可写数据入口</strong>。整体采用 <strong>local-first（本地优先）</strong>模型：所有写操作先落本地 <strong>IndexedDB（浏览器本地数据库，本机主存储）</strong>，再由同步引擎在后台异步推送到 <strong>GitHub（可选接入的远端主存储，也是跨设备汇聚点 / convergence point）</strong>。视图层只通过 <code>StorageLayer（存储层）</code> 暴露的接口读写数据，永远不直接接触底层存储或 GitHub API。</p>
+  <p class="muted">本文档只描述<strong>既定目标架构</strong>，不含当前/历史实现细节。对应实现文件索引：<code>src/stores/data.ts</code>（store / 写盘）、<code>src/services/sync/{engine,merge,serialize}.ts</code>（同步）、<code>src/services/github/{contents,manifest,repoFile,diagnose,client}.ts</code>（远端）、<code>src/types/index.ts</code>（模型）。</p>
+
+  <div class="card">
+    <h3 style="margin-top:0">红线约束（来自 AGENTS.md）</h3>
+    <ul>
+      <li><span class="tag t-danger">红线 4</span> 禁止绕过 <code>src/stores/data.ts</code> 直接读写 <code>wb.*</code> 键；禁止绕过 <code>services/github/*</code>、<code>services/sync/*</code> 直接调 GitHub API（否则脏标记/冲突合并/事件广播被绕开，引发数据丢失）。</li>
+      <li><span class="tag t-danger">红线 5</span> GitHub Token 只可存于 <code>wb.cfg.v1</code>，禁止写入 <code>data/workbench.json</code>、日志或源码。</li>
+      <li><span class="tag t-info">安全基线</span> 用户内容渲染前必须经 <code>esc()</code> 转义，禁止未转义拼接 <code>innerHTML</code>。</li>
+    </ul>
+  </div>
+</section>
+
+<!-- §1 -->
+<section id="s1">
+  <h2>§1 目标架构（分层模型）</h2>
+  <p>自上而下分为四层，依赖方向单向向下；视图层只面对 <code>StorageLayer</code>，底层是 IndexedDB（本机主存储）与 GitHub（可选远端主存储）双实现。写入采用 <strong>「View → IndexedDB（立即）→ GitHub（后台异步）」</strong>的 local-first 链路。</p>
+
+  <pre class="mermaid">
+flowchart TD
+    UL[上层: 视图 / 业务] -->|读写实体| SL
+    subgraph SL[存储层 StorageLayer]
+      direction LR
+      M1[SaveTodo / SaveArticle]
+      M2[ListTodo / ListArticle: page,size 返回 items,total]
+      M3[DeleteTodo / DeleteArticle]
+    end
+    SL -->|① 写入: 立即落盘本地| DB
+    SL -.->|② 同步: 后台异步推送| DG
+    subgraph DG[数据层·远端主存储 GitHub 文件夹]
+      direction LR
+      A0[todos/ID.json]
+      A1[kb/ID.md]
+      A2[manifest.json 索引]
+      A3[images/ 极简→IndexedDB · 同步→git]
+    end
+    subgraph DB[数据层·本机主存储 浏览器 IndexedDB（需求驱动）]
+      direction LR
+      B1[todos 对象库]
+      B2[articles 对象库]
+    end
+    DG --> IC[图云层 ImageCloudLayer]
+    IC --> GIT[(同步: git images/HASH · 极简: IndexedDB · 图云后续)]
+  </pre>
+
+  <div class="note"><b>为什么 IndexedDB 是「极简默认」而非「临时缓存」：</b>这个浏览器 IndexedDB 实现的命名是<b>需求驱动</b>的，不是技术降级——一个新用户第一次试用「个人工作台」时，不可能已经备好 GitHub 仓库 / Token / 分支。<b>零配置、用浏览器原生存储即可完整启动</b>，是产品冷启动的最小可行路径，也是默认模式。只有用户主动填好 GitHub 配置后，远端仓库才成为<b>可选的</b>主存储。因此在极简模式（minimal mode，零配置默认态）下，IndexedDB <b>就是唯一的主存储</b>，而非"远端缓存的一份副本"；"临时"仅相对"可选接入的远端存储层"而言，不应理解为次等存储。</div>
+  <div class="note"><b>写入链路（View → IndexedDB → GitHub）：</b>视图层只调用 <code>StorageLayer.Save*/Delete*</code>，<b>① 写入立即落本地 IndexedDB</b>（毫秒级、UI 不阻塞、离线可用），<b>② 再由同步引擎在后台异步推送</b>到 GitHub（图中虚线表示异步、非阻塞）。即"所有数据先写 IndexedDB，IndexedDB 再同步到 GitHub"——这是 local-first 本地优先模式：GitHub 是<b>可选接入的远端主存储 / 跨设备汇聚点</b>，离线时完全不依赖它。</div>
+  <div class="note"><b>"主存储"是双向汇聚，不是主从覆盖：</b>本机 IndexedDB 是<b>本机主存储</b>（写入发生地、本机真相），GitHub 是<b>远端主存储 / 跨设备汇聚点</b>（多设备真相）。二者各为各自范围内的主存储，<b>不是"GitHub 永远赢"的主从关系</b>。同步语义是<b>双向合并</b>（按 <code>updatedAt</code> 的 LWW，见 §5.2），而非单向覆盖——若推时以本地为准、拉时以 GitHub 为准会两边互殴丢数据。多设备离线各改同一篇时，后同步者会静默覆盖先同步者，这是 LWW 的已知取舍，需在 UI/文档明示。</div>
+</section>
+
+<!-- §2 -->
+<section id="s2">
+  <h2>§2 数据模型与存储结构</h2>
+
+  <h3>2.1 实体 Schema（src/types/index.ts）</h3>
+  <pre><code>interface Todo {
+  id; title; desc; color: ColorKey; status: 'todo'|'doing'|'done';
+  due: string;            // 'YYYY-MM-DD'，空串无截止
+  time: number;           // 用户可编辑创建时间
+  articleId: string;      // 关联文章 id，空串无
+  createdAt; updatedAt;
+  deleted: boolean;       // 软删除墓碑（参与合并，可传播远端删除）
+}
+interface Article {
+  id; title; content; fromTodo: string; tags: string[];
+  createdAt; updatedAt;
+  deleted: boolean;       // 墓碑（参与合并，可传播远端删除）
+  published?: boolean;    // 是否发布到公开镜像库
+}</code></pre>
+  <p class="muted">Todo（待办事项）与 Article（文章）均经 <code>StorageLayer</code> 持久化：Todo 落 <code>todos/&lt;id&gt;.json</code>，Article 落 <code>kb/&lt;id&gt;.md</code>（见 §3 路由）。双向链接以正文 <code>[[标题]]</code> 形式存在，改标题时由 <code>renameRefs</code> 联动改写所有引用。</p>
+
+  <h3>2.2 存储结构</h3>
+  <table>
+    <tr><th>位置</th><th>路径</th><th>结构</th><th>作用</th></tr>
+    <tr><td rowspan="2">远端主存储<br>（GitHub 仓库）</td><td><code>manifest.json</code></td><td><code>{version:1, updatedAt, total, order:string[], articles:{[id]:{...}}, todos:{[id]:{...}}}</code></td><td>轻量索引，含 <code>total/order</code> 供分页；per-file LWW 的 sha 缓存</td></tr>
+    <tr><td><code>kb/&lt;id&gt;.md</code> · <code>todos/&lt;id&gt;.json</code></td><td>文章：frontmatter（id/title/createdAt/updatedAt/deleted/fromTodo/tags/publish）+ Markdown 正文；待办：单条 JSON</td><td>每篇/每条一个文件，便于版本追溯、冲突隔离与单实体读写</td></tr>
+    <tr><td>本机主存储<br>（浏览器 IndexedDB）</td><td>object store <code>todos</code> / <code>articles</code> / <code>images</code>，key = id</td><td>独立 <code>index</code> store 存分页元数据（<code>total/order</code>）</td><td>本地快速启动层 + 极简模式唯一主存储；游标天然分页</td></tr>
+  </table>
+  <p class="muted">图片存储按模式分两支（详见 §6）：极简（未填 GitHub）→ 本地 IndexedDB <code>images</code>；同步（已填 GitHub）→ git <code>images/&lt;hash&gt;</code>；外部对象存储图云为后续实现。</p>
+</section>
+
+<!-- §3 -->
+<section id="s3">
+  <h2>§3 存储层 / 数据层接口契约</h2>
+  <p>存储层对上是统一接口，内部按实体类型路由到不同数据层实现；调用方（视图 / 业务）不感知底层是 GitHub 还是 IndexedDB。范围锁定如下：</p>
+  <table>
+    <tr><th>决策点</th><th>结论</th></tr>
+    <tr><td>存储层接口</td><td><code>SaveTodo / SaveArticle / ListTodo / ListArticle / DeleteTodo / DeleteArticle</code>；图片操作不作为独立接口，而是 <code>Save*</code> / <code>Delete*</code> 的内部副作用（见 §3.1 与 §6）</td></tr>
+    <tr><td>Todo 路由</td><td>→ 本地 IndexedDB（本机主存储）+ 远端 GitHub（<code>todos/&lt;id&gt;.json</code>），与 Article 共用 StorageLayer 双写路径，按需同步</td></tr>
+    <tr><td>Article 路由</td><td>→ 本地 IndexedDB + 远端 GitHub（<code>kb/&lt;id&gt;.md</code>），双向同步</td></tr>
+    <tr><td>分页覆盖</td><td><b>含远端按页拉取</b>：列表 / 读写按页；同步合并改为<b>索引 / 分块驱动</b></td></tr>
+    <tr><td>浏览器实现</td><td><b>IndexedDB</b>（支持大量单实体文件 + 二进制图片 + 异步不阻塞）</td></tr>
+    <tr><td>图片存储</td><td>按模式分两支：极简（未填 GitHub）→ 本地 IndexedDB；同步（已填 GitHub）→ git <code>images/HASH</code>；外部对象存储图云为后续实现（见 image-cloud-design.html）</td></tr>
+  </table>
+
+  <h3>3.1 存储层接口（StorageLayer）</h3>
+  <pre><code>interface StorageLayer {
+  // ── Todo：本地 IndexedDB + 远端 GitHub 同步 ──
+  SaveTodo(t: Todo): Promise&lt;void&gt;
+  ListTodo(page: number, size: number): Promise&lt;{ items: Todo[]; total: number }&gt;
+  DeleteTodo(id: string): Promise&lt;void&gt;        // 本地软删 / 物理删
+
+  // ── Article：远端永久（GitHub 文件夹）──
+  SaveArticle(a: Article): Promise&lt;void&gt;
+  ListArticle(page: number, size: number): Promise&lt;{ items: Article[]; total: number }&gt;
+  DeleteArticle(id: string): Promise&lt;void&gt;      // 墓碑，待同步传播
+
+  // 注：图片上传/回收不再作为 StorageLayer 的独立方法。
+  //     Save*/Delete* 内部根据"正文里引用了哪些图片"自动触发
+  //     图云层的 put()/delete()（见 §6），调用方只面对实体接口。
+}</code></pre>
+  <div class="note">图片是实体（Todo/Article）的<strong>内部细节</strong>而非独立资源：<code>SaveTodo/SaveArticle/...</code> 先写本地 IndexedDB、再异步同步到远端 GitHub（Todo → <code>todos/&lt;id&gt;.json</code>，Article → <code>kb/&lt;id&gt;.md</code>）；若正文含 <code>!(...)</code> 图片引用，存储层在写盘同时委托 <code>ImageCloudLayer.put()</code> 上传、在删除实体或正文去掉引用时委托 <code>ImageCloudLayer.delete()</code> 回收。视图层只面对 <code>StorageLayer</code>，不感知图云层。</div>
+
+  <h3>3.2 DataLayer（数据层）接口与双实现</h3>
+  <pre><code>interface DataLayer {
+  Save&lt;T&gt;(kind: 'todo'|'article', id: string, entity: T): Promise&lt;void&gt;
+  Get&lt;T&gt;(kind: 'todo'|'article', id: string): Promise&lt;T | null&gt;
+  List&lt;T&gt;(kind: 'todo'|'article', page: number, size: number): Promise&lt;{ items: T[]; total: number }&gt;
+  Delete(kind: 'todo'|'article', id: string): Promise&lt;void&gt;
+  // 索引：维护 total 与有序 id 列表，供分页与同步比对
+  readIndex(): Promise&lt;DataIndex&gt;
+}</code></pre>
+  <table>
+    <tr><th>实现</th><th>承载</th><th>物理结构</th></tr>
+    <tr><td>远端主存储（GitHub 文件夹）</td><td>Todo + Article + 图片</td><td><code>todos/&lt;id&gt;.json</code>、<code>kb/&lt;id&gt;.md</code>（frontmatter+正文）、<code>manifest.json</code>（索引）、<code>images/&lt;hash&gt;</code></td></tr>
+    <tr><td>本机主存储（浏览器 IndexedDB，需求驱动）</td><td>Todo + Article：极简模式下为<strong>唯一主存储</strong>；同步模式下兼作本地快速启动层</td><td>object store <code>todos</code> / <code>articles</code>，key = id；独立 <code>index</code> store 存分页元数据</td></tr>
+  </table>
+</section>
+
+<!-- §4 -->
+<section id="s4">
+  <h2>§4 分页（pagination）与索引（index）· 减少全量遍历的核心</h2>
+  <p><b>索引（index）是分页的前提</b>：无论本地还是远端，都维护一份轻量 <code>DataIndex</code>（数据索引，不存正文）：</p>
+  <pre><code>interface DataIndex {
+  total: number
+  order: string[]                       // 有序 id 列表（按 updatedAt 倒序）
+  meta: Record&lt;string, { updatedAt: number; deleted: boolean; sha?: string }&gt;
+}</code></pre>
+  <ul>
+    <li><b>列表按页</b>：<code>ListTodo/ListArticle(page,size)</code> 先读对应索引（GitHub 侧 <code>manifest.json</code>，本地侧 IndexedDB <code>index</code> store）→ 取 <code>order.slice((page-1)*size, page*size)</code> 的本页 id → 仅 <code>GET</code> 这些 <code>todos/&lt;id&gt;.json</code> / <code>kb/&lt;id&gt;.md</code>。<b>全量遍历被降为 O(页大小)</b>。</li>
+    <li><b>本地 Todo 分页</b>：IndexedDB 游标 <code>cursor.advance((page-1)*size)</code> + <code>limit(size)</code>，天然分页，无全量加载。</li>
+    <li><b>同步合并改为索引驱动（含远端按页拉取）</b>：拉取只取轻量 <code>manifest.json</code> → 与本地索引做 LWW（按 <code>updatedAt</code>，相等保留本地）→ 仅找出<b>真有差异</b>的实体 → 只 <code>GET/PUT</code> 这些变更文件。<b>传输量从 O(N) 降到 O(差异数)</b>。</li>
+  </ul>
+  <div class="note">关键转变：从"拉全部实体正文再合并"改为"拉索引 → 比对 → 只拉变更文件"。UI 分页与同步分块共用同一份索引，避免重复设计。</div>
+</section>
+
+<!-- §5 -->
+<section id="s5">
+  <h2>§5 同步机制</h2>
+
+  <h3>5.1 SyncPhase（同步状态机）</h3>
+  <pre><code>idle → syncing → ok | error | off
+            ↑___________↓ (轮询 / 防抖推送循环)</code></pre>
+  <ul>
+    <li><code>off</code>：未启用同步，或已启用但配置不完整（不发起请求，避免空 repo 触发误报）。</li>
+    <li><code>syncing</code>：拉取/合并/推送进行中，驱动 UI 同步状态指示。</li>
+  </ul>
+
+  <h3>5.2 LWW（Last-Write-Wins，最后写入获胜）合并</h3>
+  <p>以 <code>id</code> 为主键，<code>updatedAt</code> 大者胜，相等保留本地；合并后按 <code>createdAt</code> 倒序。墓碑（<code>deleted:true</code>）同样参与合并，保证删除可跨端传播。实现层会额外返回"是否发生变更"的标志，供上层判断是否需要推送。</p>
+  <pre><code>function mergeEntities(local, remote){
+  const map = new Map()
+  for (const it of local) map.set(it.id, it)
+  for (const r of remote){
+    const l = map.get(r.id)
+    if (!l || r.updatedAt > l.updatedAt) map.set(r.id, r)  // 远端较新则覆盖
+  }
+  return [...map.values()].sort((a,b)=> b.createdAt - a.createdAt)
+}</code></pre>
+  <div class="note">取舍：LWW 是单用户多设备场景下的务实选择，但多设备离线各改同一篇时，后同步者会静默覆盖先同步者。若需更强保障，可演进为字段级合并 / CRDT（无冲突复制数据类型），但当前目标以 LWW 为基线并在 UI/文档明示该取舍。</div>
+
+  <h3>5.3 墓碑（tombstone，软删除标记）TTL</h3>
+  <p>软删除记录保留 <code>TOMBSTONE_TTL = 30 天</code>，过期后清理。保留窗口用于让删除操作有机会传播到其它端；窗口内保留的墓碑会被推送到远端。</p>
+
+  <h3>5.4 乐观锁 & 冲突重试 & 并发</h3>
+  <ul>
+    <li><b>乐观锁（optimistic locking）</b>：推送 <code>manifest.json</code> / 单个 <code>kb/&lt;id&gt;.md</code> 时携带远端当前 <code>sha</code>；远端若已被改动，GitHub 返回 409。</li>
+    <li><b>冲突重试（conflict retry）</b>：发生冲突时，重拉远端合并后重试，最多 <code>MAX_RETRY=3</code> 次，退避 <code>350 ms × attempt</code>；超限置 <code>phase='error'</code>。每次重试必须重拉远端 manifest sha 作为乐观锁基准，不能用本地陈旧 sha，否则会陷入 409 死循环。</li>
+    <li><b>并发排队（concurrency queue）</b>：同步请求复用同一 in-flight Promise，避免"忙即返回"导致的写丢失。</li>
+    <li><b>防抖（debounce）推送</b>：<code>PUSH_DEBOUNCE=1500 ms</code>，连续编辑只触发一次同步。</li>
+    <li><b>轮询（polling）</b>：<code>poll</code>（默认 20000 ms，钳制 5 s~300 s），页面隐藏时跳过以省流量。</li>
+  </ul>
+  <div class="note">推送顺序约定：先逐文件 <code>PUT</code> 各实体（<code>kb/&lt;id&gt;.md</code> / <code>todos/&lt;id&gt;.json</code>），最后再 <code>PUT manifest.json</code>。这样读到 manifest 时视图始终一致，半推状态不会让读取方看到残缺数据。</div>
+</section>
+
+<!-- §6 -->
+<section id="s6">
+  <h2>§6 ImageCloudLayer（图云层）</h2>
+  <p>图片存储按<strong>是否配置 GitHub</strong>分两支，外部对象存储（七牛/R2/OSS）为<strong>后续实现</strong>（设计见 <code>image-cloud-design.html</code>）。<code>ImageCloudLayer</code> 是存储层与具体图床之间的<strong>唯一隔离面</strong>——只暴露两个原语，不暴露到 StorageLayer 实体接口之上：</p>
+  <pre><code>interface ImageCloudLayer {
+  // 上传一张图，返回可引用 key（git 模式为 images/HASH，图云模式为完整 URL）
+  put(blob: Blob): Promise&lt;string&gt;
+  // 回收一张图（删除实体 / 正文去掉引用时调用）
+  delete(key: string): Promise&lt;void&gt;
+}</code></pre>
+  <ul>
+    <li><b>极简模式（未填 GitHub 配置）</b>：<code>put(blob)</code> 降级写入<strong>本地 IndexedDB</strong> <code>images</code> store（DataURL/blob），返回本地引用 key，文章引用本地 blob URL。</li>
+    <li><b>同步模式（已填 GitHub 配置）</b>：默认 <strong>git <code>images/&lt;hash&gt;.&lt;ext&gt;</code></strong> → 返回 <code>images/HASH</code> 引用；文章正文以 <code>![](images/HASH)</code> 引用。零额外依赖，可立即跑通。</li>
+    <li><b>回收时机</b>：存储层在 <code>DeleteArticle/DeleteTodo</code> 时，或 <code>SaveArticle</code> 发现正文引用的图片集合相对旧版本<strong>减少</strong>时，对"被丢弃的 key"调用 <code>ImageCloudLayer.delete(key)</code>，避免死图堆积（git 模式因墓碑传播，删除为软删，定期垃圾回收）。</li>
+    <li><b>已知取舍（git 路径）</b>：二进制进 git 会膨胀仓库、拖慢 Contents API 与克隆。仓库提供方宜加 <code>.gitattributes</code> 对 <code>images/</code> 设 <code>linguist-generated</code>。</li>
+    <li><b>图云（后续实现）</b>：对象存储（Cloudflare R2 / S3 / OSS / 七牛）作为 git 路径的升级替代，仅替换 ImageCloudLayer 内部 <code>put(blob)→url</code> 与 <code>delete(key)</code> 的实现，文章正文改为存完整 URL（含服务端签名），其余层不变。详细接口设计见 <code>image-cloud-design.html</code>。</li>
+  </ul>
+</section>
+
+<!-- §7 -->
+<section id="s7">
+  <h2>§7 生命周期与极简模式</h2>
+  <p>本章先界定浏览器侧存储（IndexedDB）的生命周期，再定义<strong>极简模式</strong>：<b>初始化时未填写任何 GitHub 相关配置，应用必须完整可运行</b>。这是 local-first 模型的<strong>默认态</strong>，而非需要额外开发的特例。</p>
+
+  <h3>7.1 浏览器侧存储生命周期（IndexedDB）</h3>
+  <table>
+    <tr><th>维度</th><th>行为</th></tr>
+    <tr><td>作用域</td><td>按 <code>origin</code>（协议+域名+端口）隔离；与 tab / 会话无关</td></tr>
+    <tr><td>留存</td><td>跨会话、跨浏览器重启<strong>永久留存</strong>；<b>无内置 TTL / 过期</b></td></tr>
+    <tr><td>消失途径</td><td>① 应用主动 <code>deleteDatabase</code> / <code>delete</code>；② 用户手动清站点数据；③ 无痕模式会话结束清空；④ <b>存储压力回收</b>（best-effort 型被 LRU 静默回收）；⑤ 分区存储清理连带</td></tr>
+    <tr><td>配额</td><td>每 origin 动态配额（量级 GB）；写满抛 <code>QuotaExceededError</code>；<code>navigator.storage.estimate()</code> 查 <code>usage/quota</code></td></tr>
+    <tr><td>持久化（persistence）开关</td><td><code>navigator.storage.persist()</code> 申请持久化（获批后免于存储压力回收，仅用户手动清才丢）；默认 best-effort 可被回收</td></tr>
+    <tr><td>事务持久性</td><td>默认 <code>durability:'default'</code>（崩溃安全）；<code>'strict'</code> 强制 fsync（更慢）</td></tr>
+  </table>
+  <div class="note">对本设计的含义：<strong>同步模式下</strong> IndexedDB 是本地快速启动层，远端 GitHub 才是主存储（含 Todo 也落 <code>todos/ID.json</code>），因此本地被回收只是"下次从远端重拉"，不丢数据。而<strong>极简模式下</strong> IndexedDB 本身就是唯一主存储（见 §1 需求驱动说明），此时本地被清即数据丢失，故 §7.5 建议在该模式主动申请 <code>storage.persist()</code> 降低回收概率。</div>
+
+  <h3>7.2 极简模式定义</h3>
+  <p><b>极简模式</b>：启动时 <code>Config</code> 中 <code>enabled=false</code> 或 <code>repo/branch/token</code> 不完整（即 <code>isConfigComplete(cfg)===false</code>），应用仍须 100% 可用：</p>
+  <ul>
+    <li>Todo / Article 的增删改查、双向链接、标题联动改写全部本地可用；</li>
+    <li>图片：按 §6 的分支——极简模式（未填 GitHub）<code>ImageCloudLayer.put(blob)</code> 写入<strong>本地 IndexedDB</strong> <code>images</code> store（DataURL/blob），文章引用本地 blob URL；同步模式（已填 GitHub）走 git <code>images/&lt;hash&gt;</code>；外部对象存储图云为后续实现。删除/去引用时由存储层内部调用 <code>ImageCloudLayer.delete(key)</code> 回收。</li>
+    <li>同步 / 冲突 / 轮询全部跳过，无任何网络请求，不报错、不卡启动。</li>
+  </ul>
+
+  <h3>7.3 需求存在性证明（为何极简模式天然成立）</h3>
+  <p>极简模式不是新增特性，而是架构的<strong>默认降级态</strong>。证明链：</p>
+  <pre><code>StorageLayer 双写路径：
+  本地 IndexedDB 写入 = 同步 / 首要（必然成功，无网络依赖）
+  远端 GitHub 同步    = 异步 / 可选
+
+启动判定：
+  isConfigComplete(cfg) === false  ──►  SyncEngine 置 phase='off'
+                                     ──► save/list/delete 仅命中本地实现
+  isConfigComplete(cfg) === true   ──►  启动轮询 + 立即 sync（同步模式）
+
+结论：零配置 → 仅本地路径生效 → 应用完整可运行。
+       故"极简可运行"是架构不变量，无需为它写专门分支。</code></pre>
+  <pre class="mermaid">
+flowchart TD
+    START[应用启动] --> LOAD[加载本地 IndexedDB: todos / articles / index]
+    LOAD --> CFG{配置完整? isConfigComplete}
+    CFG -->|否 极简模式| OFF[phase = off 仅本地 IndexedDB]
+    CFG -->|是 同步模式| ON[启动轮询 加 立即 sync]
+    OFF --> RUN[完整本地可用: 增删改查 双链 图片本地]
+    ON --> RUN2[本地 加 远端双向同步]
+    OFF -.用户后续填配置 saveConfig.-> ON
+  </pre>
+
+  <h3>7.4 极简模式边界与降级</h3>
+  <table>
+    <tr><th>能力</th><th>极简模式</th><th>同步模式</th></tr>
+    <tr><td>CRUD / 双链</td><td>✅ 本地完整</td><td>✅ 本地 + 远端</td></tr>
+    <tr><td>图片</td><td>本地 IndexedDB（DataURL）</td><td>git images/HASH（可换对象存储）</td></tr>
+    <tr><td>跨设备</td><td>❌ 仅单机</td><td>✅ 多端一致</td></tr>
+    <tr><td>网络请求</td><td>0</td><td>轮询 + 推送</td></tr>
+    <tr><td>日后升级</td><td colspan="2" style="text-align:center">填配置 → <code>saveConfig</code> → 首次 sync 全量把本地推上远端，无缝转同步模式</td></tr>
+  </table>
+
+  <h3>7.5 生命周期兜底（实现 P0 必做）</h3>
+  <ul>
+    <li><b>持久化申请</b>：<code>StorageLayer</code> 初始化时 <code>await navigator.storage.persist()</code>，降低本地被静默回收导致频繁全量重拉。</li>
+    <li><b>配额保护</b>：写前 <code>estimate()</code> 评估；捕获 <code>QuotaExceededError</code> 提示用户清理或减小图片。</li>
+    <li><b>回收自愈</b>：IndexedDB 被清后，极简模式以空库启动仍可用；同步模式下则从远端重新拉取恢复，无需特殊处理。</li>
+  </ul>
+
+  <h3>7.6 验证（存在性证明的可执行化）</h3>
+  <p>建议补集成测试固化该不变量：<b>不写任何 GitHub 配置启动</b> → 断言 <code>addTodo / updateArticle / 双向链接</code> 全部成功，且 GitHub API 从未被调用。该测试即"极简模式需求存在性"的机器证明。</p>
+  <div class="note">归并到 §8 落地计划：7.5 的 <code>persist()/estimate()/QuotaExceededError</code> 处理应并入 P0（IndexedDB 承载时一并落地）；7.6 测试作为 P0 的验收门槛。</div>
+</section>
+
+<!-- §8 -->
+<section id="s8">
+  <h2>§8 落地步骤与风险</h2>
+
+  <h3>8.1 落地步骤与优先级</h3>
+  <table>
+    <tr><th>批次</th><th>项</th><th>说明</th></tr>
+    <tr><td>P0</td><td>① 抽象 <code>DataLayer</code> 接口 + IndexedDB 实现（承载 Todo）</td><td>先把 Todo 从单 blob 迁到单实体 + 索引分页，验证分页降遍历收益</td></tr>
+    <tr><td>P0</td><td>② 引入 <code>DataIndex</code>，<code>ListTodo/ListArticle</code> 按页</td><td>本地游标分页；远端先读 manifest 索引</td></tr>
+    <tr><td>P1</td><td>③ <code>StorageLayer</code> 路由：统一双写（本地 IndexedDB + 远端 GitHub 同步），Todo 与 Article 共用</td><td>视图层切到 <code>StorageLayer</code>，隐藏底层差异</td></tr>
+    <tr><td>P1</td><td>④ 远端单文件化 <code>kb/&lt;id&gt;.md</code> + <code>todos/&lt;id&gt;.json</code> + manifest 仅存索引</td><td>替换原有全量推送/拉取</td></tr>
+    <tr><td>P2</td><td>⑤ 同步合并索引驱动（只拉变更文件）</td><td>把"全量拉正文合并"改为"索引比对 + 差分拉取"</td></tr>
+    <tr><td>P2</td><td>⑥ 图片存储落地（极简 IndexedDB / 同步 git），预留对象存储图云切换点</td><td>接口留扩展，图云为后续实现</td></tr>
+  </table>
+
+  <h3>8.2 风险与回退</h3>
+  <ul>
+    <li><b>迁移兼容</b>：旧单 blob 需在首次启动迁移为 IndexedDB 单实体 + 索引；远端 manifest 字段扩展为含 <code>total/order</code>，读取端对未知字段向后兼容。</li>
+    <li><b>路由一致性</b>：Todo 与 Article 共用"本地 + 远端"双写路径，路由层需保证两者索引（<code>total/order</code>）同步更新，可用单测覆盖。</li>
+    <li><b>索引与实体不一致</b>：写实体必须同步更新索引（同事务 / 同批次），否则分页 total 失真；IndexedDB 可用事务保证原子，GitHub 侧以 manifest 为索引权威。</li>
+    <li><b>回退</b>：分阶段合入，每批保持视图层 API 不变；若 IndexedDB 实现受阻，P0 可先保留单 blob 但加索引分页作为过渡。</li>
+  </ul>
+</section>
+
+</main>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+</script>
+
+<footer>
+  workbench 数据存储层设计文档 · 既定目标架构 · 纯静态交付，可直接浏览器打开
+</footer>
+</body>
+</html>
