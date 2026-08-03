@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>workbench 数据存储层 · 整体设计与实现</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#161c24; --panel2:#1c2530; --ink:#e6edf3; --muted:#93a1b0;
+    --line:#2a3441; --accent:#4cc2ff; --accent2:#7ee787; --warn:#f0a868; --danger:#ff7b72;
+    --code:#0b0f14; --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;}
+  header{padding:48px 24px 28px;background:linear-gradient(180deg,#11202e,#0f1419);
+    border-bottom:1px solid var(--line);}
+  header h1{margin:0 0 8px;font-size:28px;letter-spacing:.5px}
+  header p{margin:0;color:var(--muted)}
+  nav{position:sticky;top:0;z-index:5;background:rgba(15,20,25,.92);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);padding:10px 24px;display:flex;gap:18px;flex-wrap:wrap;
+    font-size:13px}
+  nav a{color:var(--muted);text-decoration:none}
+  nav a:hover{color:var(--accent)}
+  main{max-width:980px;margin:0 auto;padding:32px 24px 80px}
+  section{margin:40px 0}
+  h2{font-size:22px;border-left:4px solid var(--accent);padding-left:12px;margin:32px 0 16px}
+  h3{font-size:17px;color:var(--accent2);margin:22px 0 8px}
+  p{color:#cdd9e5}
+  code{background:var(--code);color:#ffd596;padding:1px 6px;border-radius:5px;font-size:13px}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 16px;overflow:auto;font-size:13px;line-height:1.55}
+  pre code{background:none;color:#c9d1d9;padding:0}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--muted);font-weight:600}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 18px;margin:14px 0}
+  .layer{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin:10px 0}
+  .layer .box{flex:1;min-width:150px;border:1px solid var(--line);background:var(--panel);
+    padding:12px;border-radius:8px;margin:4px;position:relative}
+  .layer .box b{color:var(--accent)}
+  .layer .box small{color:var(--muted);display:block;margin-top:4px;font-size:12px}
+  .arrow{text-align:center;color:var(--muted);font-size:12px;margin:2px 0}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;margin-right:6px}
+  .t-ok{background:rgba(126,231,135,.15);color:var(--accent2)}
+  .t-warn{background:rgba(240,168,104,.15);color:var(--warn)}
+  .t-danger{background:rgba(255,123,114,.15);color:var(--danger)}
+  .t-info{background:rgba(76,194,255,.15);color:var(--accent)}
+  .note{border-left:3px solid var(--warn);background:rgba(240,168,104,.08);
+    padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;color:#e8d3b5}
+  .key{color:var(--accent)}
+  .muted{color:var(--muted)}
+  footer{border-top:1px solid var(--line);padding:20px 24px;color:var(--muted);font-size:12px;text-align:center}
+  ul{color:#cdd9e5}
+  li{margin:4px 0}
+  .mermaid{margin:18px 0;background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius);padding:8px 14px;overflow:auto}
+</style>
+</head>
+<body>
+<header>
+  <h1>workbench · 数据存储层整体设计与实现</h1>
+  <p>纯静态 PWA · 待办卡片 + 双向链接笔记 · localStorage ↔ GitHub Contents API 双向同步</p>
+</header>
+
+<nav>
+  <a href="#s0">§0 概述</a>
+  <a href="#s1">§1 架构</a>
+  <a href="#s2">§2 存储结构</a>
+  <a href="#s3">§3 访问时机</a>
+  <a href="#s33">§3.3 写入时序图</a>
+  <a href="#s4">§4 同步机制</a>
+  <a href="#s5">§5 优化落地</a>
+  <a href="#s6">§6 存储/数据层重构</a>
+  <a href="#s7">§7 生命周期/极简模式</a>
+</nav>
+
+<main>
+
+<!-- §0 -->
+<section id="s0">
+  <h2>§0 概述</h2>
+  <p>数据层是 workbench 的<strong>唯一持久化真相源</strong>，负责：本地内存态管理、localStorage 落盘、远端
+  GitHub 仓库的拉取/推送与冲突合并。视图层（Vue 组件）只通过 Pinia store 暴露的 <code>computed</code> 与方法读写数据，
+  永远不直接接触 <code>localStorage</code> 或 GitHub API。</p>
+
+  <div class="card">
+    <h3 style="margin-top:0">红线约束（来自 AGENTS.md）</h3>
+    <ul>
+      <li><span class="tag t-danger">红线 4</span> 禁止绕过 <code>src/stores/data.ts</code> 直接读写 <code>wb.*</code> 键；禁止绕过 <code>services/github/*</code>、<code>services/sync/*</code> 直接调 GitHub API（否则脏标记/冲突合并/事件广播被绕开，引发数据丢失）。</li>
+      <li><span class="tag t-danger">红线 5</span> GitHub Token 只可存于 <code>wb.cfg.v1</code>，禁止写入 <code>data/workbench.json</code>、日志或源码。</li>
+      <li><span class="tag t-info">安全基线</span> 用户内容渲染前必须经 <code>esc()</code> 转义，禁止未转义拼接 <code>innerHTML</code>。</li>
+    </ul>
+  </div>
+
+  <p class="muted">核心文件索引：<code>src/stores/data.ts</code>（store）、<code>src/services/sync/{engine,merge,serialize}.ts</code>（同步）、<code>src/services/github/{contents,manifest,repoFile,diagnose,client}.ts</code>（远端）、<code>src/types/index.ts</code>（模型）。</p>
+</section>
+
+<!-- §1 -->
+<section id="s1">
+  <h2>§1 整体架构（分层）</h2>
+  <p>自上而下分为五层，依赖方向单向向下，便于单测与替换实现：</p>
+
+  <div class="layer">
+    <div class="box"><b>View 层</b><small>views/* · components/*<br>只读 computed，写操作调 store 方法</small></div>
+  </div>
+  <div class="arrow">↓ 调用 store 方法 / 订阅响应式状态</div>
+  <div class="layer">
+    <div class="box"><b>Pinia Store</b><small>src/stores/data.ts<br>唯一本地数据源；业务操作；<br>SyncAdapter 接口</small></div>
+  </div>
+  <div class="arrow">↓ 持久化 / ↑ 事件广播</div>
+  <div class="layer">
+    <div class="box"><b>SyncEngine</b><small>services/sync/engine.ts<br>编排：拉/推/轮询/防抖/并发排队</small></div>
+    <div class="box"><b>Merge &amp; Serialize</b><small>sync/merge.ts · sync/serialize.ts<br>LWW 合并 · 墓碑 TTL 清理</small></div>
+  </div>
+  <div class="arrow">↓ 透传</div>
+  <div class="layer">
+    <div class="box"><b>ContentsApi</b><small>services/github/contents.ts<br>manifest + kb/&lt;id&gt;.md 读写</small></div>
+    <div class="box"><b>RepoFile / Manifest</b><small>github/repoFile.ts · manifest.ts<br>单文件 PUT/GET · 索引比对</small></div>
+  </div>
+  <div class="arrow">↓ HTTPS (GitHub Contents API，经可选 Cloudflare Worker 代理)</div>
+  <div class="layer">
+    <div class="box"><b>远端仓库</b><small>workbench-data<br>manifest.json + kb/*.md</small></div>
+    <div class="box"><b>本地存储</b><small>localStorage<br>wb.data.v1 / wb.cfg.v1 / wb.manifestSha.v1</small></div>
+  </div>
+
+  <div class="note">当前 <code>engine.sync()</code> 与 <code>engine.startPolling()</code> 直接在 <code>useDataStore()</code> 定义体内调用（<code>data.ts:303-304</code>），store 副作用与定义耦合，是 §5 重点优化项之一。</div>
+</section>
+
+<!-- §2 -->
+<section id="s2">
+  <h2>§2 存储结构</h2>
+
+  <h3>2.1 本地（localStorage，4 个键）</h3>
+  <table>
+    <tr><th>键</th><th>类型 / 内容</th><th>是否同步远端</th><th>说明</th></tr>
+    <tr><td><code class="key">wb.data.v1</code></td><td><code>WorkbenchData{version:1, todos:Todo[], articles:Article[], updatedAt}</code></td><td>仅 articles 上传</td><td>主数据；每次 <code>touch()</code> 全量序列化写入</td></tr>
+    <tr><td><code class="key">wb.cfg.v1</code></td><td><code>Config{enabled,repo,branch,path,token,poll,apiBase,publicRepo?}</code></td><td><span class="tag t-danger">否</span></td><td>含 token；永不落远端（红线 5）</td></tr>
+    <tr><td><code class="key">wb.manifestSha.v1</code></td><td><code>string</code>（manifest.json 的乐观锁 sha）</td><td>回填空</td><td>推远端成功后回填，避免 409 冲突</td></tr>
+    <tr><td><code class="key">wb.seeded</code></td><td><code>"1"</code></td><td>否</td><td>首次播种示例数据标记，仅一次</td></tr>
+  </table>
+
+  <h3>2.2 远端（GitHub 仓库 workbench-data）</h3>
+  <table>
+    <tr><th>路径</th><th>结构</th><th>作用</th></tr>
+    <tr><td><code>manifest.json</code></td><td><code>{version:1, updatedAt, articles:{[id]:{id,title,updatedAt,deleted,sha}}, todosSha}</code></td><td>轻量索引，避免每次拉全量；per-file LWW 的 sha 缓存</td></tr>
+    <tr><td><code>kb/&lt;id&gt;.md</code></td><td>frontmatter（id/title/createdAt/updatedAt/deleted/fromTodo/tags/publish）+ Markdown 正文</td><td>每篇文章一个文件，便于版本追溯与冲突隔离</td></tr>
+  </table>
+
+  <h3>2.3 实体 Schema（src/types/index.ts）</h3>
+  <pre><code>interface Todo {
+  id; title; desc; color: ColorKey; status: 'todo'|'doing'|'done';
+  due: string;            // 'YYYY-MM-DD'，空串无截止
+  time: number;           // 用户可编辑创建时间
+  articleId: string;      // 关联文章 id，空串无
+  createdAt; updatedAt;
+  deleted: boolean;       // 软删除墓碑（仅本地，不上传）
+}
+interface Article {
+  id; title; content; fromTodo: string; tags: string[];
+  createdAt; updatedAt;
+  deleted: boolean;       // 墓碑（参与合并，可传播远端删除）
+  published?: boolean;    // 是否发布到公开镜像库
+}</code></pre>
+  <p class="muted">Todo 当前仅存本地、不进同步（§6 重构后将支持远端同步，落为 <code>todos/&lt;id&gt;.json</code>）；Article 经由 <code>kb/&lt;id&gt;.md</code> 双向同步。双向链接以正文 <code>[[标题]]</code> 形式存在，改标题时由 <code>renameRefs</code> 联动改写所有引用（L11）。</p>
+</section>
+
+<!-- §3 -->
+<section id="s3">
+  <h2>§3 数据访问时机</h2>
+
+  <h3>3.1 时序总览</h3>
+  <table>
+    <tr><th>时机</th><th>触发点</th><th>行为</th></tr>
+    <tr><td>冷启动</td><td><code>useDataStore()</code> 定义执行</td><td><code>loadData/Config/ManifestSha</code> 读盘 → <code>engine.sync()</code> + <code>engine.startPolling()</code></td></tr>
+    <tr><td>读（响应式）</td><td>组件 <code>computed</code></td><td><code>todos</code>/<code>articles</code>；<code>articleById/todoById</code> 按需 find（过滤墓碑）</td></tr>
+    <tr><td>写（业务）</td><td><code>add*/update*/remove*</code></td><td>改内存 → <code>touch()</code> → <code>persist()</code>（写 <code>wb.data.v1</code>）+ <code>engine.schedulePush()</code>（防抖 1.5s 推远端）</td></tr>
+    <tr><td>批量</td><td><code>batch(fn)</code></td><td>批内仅一次 <code>persist</code> + 脏标记</td></tr>
+    <tr><td>跨标签页</td><td><code>window 'storage'</code></td><td><code>mergeLWW</code> 合并 articles/todos，<b>不</b>回写避免 ping-pong</td></tr>
+    <tr><td>配置变更</td><td><code>saveConfig()</code></td><td>停/启轮询 + 立即 <code>sync(true)</code></td></tr>
+    <tr><td>手动同步</td><td><code>SyncChip</code> 点击</td><td><code>store.sync(true)</code></td></tr>
+    <tr><td>发布镜像</td><td><code>setPublished()</code></td><td>并行 <code>publishToMirror / unpublishFromMirror</code></td></tr>
+  </table>
+
+  <h3>3.2 一次写入的完整链路</h3>
+  <pre><code>组件调用 store.updateArticle(id, patch)
+  └─ 内存 data.value.articles[i] = {...next, updatedAt: Date.now()}
+  └─ touch()
+       ├─ dirty = true
+       ├─ persist()  → JSON.stringify(cleanupTombstones(data)) → wb.data.v1
+       └─ engine.schedulePush()  → setTimeout(1500) → engine.sync(false)
+                                         ├─ fetchRemote() 拉 manifest + kb/*.md
+                                         ├─ mergeArticles(local, remote)  LWW
+                                         ├─ applyRemote() 写回内存 + persist()
+                                         └─ pushRemote()  逐文件 PUT kb/<id>.md + manifest.json
+                                                              （冲突则重试 ≤3 次）</code></pre>
+  <div class="note">关键点：<b>Todo 的增删改不触发 <code>schedulePush</code></b>（只 <code>touch</code> 落本地）；只有 Article 变更才会推远端。落盘为<strong>全量序列化</strong>，是大数据量下的性能瓶颈（见 §5）。</div>
+
+  <h3 id="s33">3.3 写入时机时序图（Mermaid）</h3>
+  <p>下面 6 张时序图覆盖所有「数据落盘 / 落远端」的触发时机。其中时机 ③（跨标签页）是唯一<strong>只改内存、不落盘</strong>的写入；其余 5 类都会写 <code>localStorage</code>，时机 ④⑤ 还会经 <code>ContentsApi</code> 写远端仓库。</p>
+
+  <h4>写入时机总览（触发方 → 数据层 → 落盘目标）</h4>
+  <pre class="mermaid">
+flowchart LR
+    subgraph T[触发方]
+      U[用户操作]
+      CFG[配置面板]
+      OT[其它标签页]
+      POLL[轮询 / SyncChip]
+    end
+    subgraph D[数据层]
+      S[DataStore]
+      E[SyncEngine]
+      API[ContentsApi]
+    end
+    subgraph P[持久化目标]
+      LS[(localStorage: wb.data.v1)]
+      LSha[(wb.manifestSha.v1)]
+      LCfg[(wb.cfg.v1)]
+      GH[(GitHub 仓库: kb/ID.md + manifest.json)]
+      MIR[(公开镜像仓库)]
+    end
+
+    U -->|① 增删改| S
+    U -->|⑥ setPublished| S
+    CFG -->|② saveConfig| S
+    OT -->|③ storage LWW 合并| S
+    POLL -->|④⑤ sync| E
+
+    S -->|touch 落盘| LS
+    S -->|setManifestSha| LSha
+    S -->|saveConfig| LCfg
+    S -->|schedulePush| E
+    S -->|publishToMirror| MIR
+
+    E -->|fetchRemote 合并| S
+    E -->|pushRemote| GH
+    E -->|setManifestSha| LSha
+  </pre>
+
+  <p class="muted">图例：实线箭头为「触发 / 调用」，数据最终写入右侧持久化目标。③ 走虚线语义的合并后<strong>不</strong>回写 <code>wb.data.v1</code>（仅内存），故未连到 LS；④ 拉取合并后写 LS + LSha，⑤ 推送写 GH。</p>
+
+  <h4>① 本地用户变更落盘（增/改/删 Todo 或 Article）</h4>
+  <pre class="mermaid">
+sequenceDiagram
+    actor U as 用户
+    participant V as 视图层
+    participant S as DataStore
+    participant LS as localStorage
+    U->>V: 增 / 改 / 删 操作
+    V->>S: addTodo / updateArticle / removeArticle ...
+    S->>S: 改 data.value
+    S->>S: touch() dirty=true, updatedAt=now
+    S->>LS: setItem wb.data.v1 = JSON(cleanupTombstones)
+    Note over S,LS: Article 变更额外触发 schedulePush
+  </pre>
+
+  <h4>② 配置写入 saveConfig</h4>
+  <pre class="mermaid">
+sequenceDiagram
+    actor U as 用户
+    participant S as DataStore
+    participant LS as localStorage
+    participant E as SyncEngine
+    U->>S: saveConfig(cfg)
+    S->>LS: setItem wb.cfg.v1 = JSON(cfg)
+    S->>E: stopPolling() + startPolling()
+    S->>E: sync(true) 立即全量同步
+  </pre>
+
+  <h4>③ 跨标签页合并（同域其它标签写入）</h4>
+  <pre class="mermaid">
+sequenceDiagram
+    participant O as 其它标签页
+    participant LS as localStorage
+    participant W as 本标签 window
+    participant S as DataStore
+    O->>LS: setItem wb.data.v1
+    LS-->>W: storage 事件 key=wb.data.v1
+    W->>S: storage 回调
+    S->>S: mergeLWW(本地, 远端) 仅改内存
+    Note over S: 不调 persist / touch，避免 ping-pong
+  </pre>
+
+  <h4>④ 同步拉取 + 合并落盘（轮询 / 手动触发）</h4>
+  <pre class="mermaid">
+sequenceDiagram
+    participant E as SyncEngine
+    participant C as ContentsApi.fetchRemote
+    participant P as Worker代理
+    participant G as GitHub仓库
+    participant S as DataStore
+    participant LS as localStorage
+    E->>C: fetchRemote(cfg)
+    C->>P: GET manifest.json + kb/ID.md
+    P->>G: Contents API
+    G-->>C: 远端快照 articles, manifestSha, shas
+    E->>E: mergeArticles(local, remote)
+    E->>S: applyRemote(merged)
+    S->>LS: persist() setItem wb.data.v1
+    S->>LS: setManifestSha() setItem wb.manifestSha.v1
+  </pre>
+
+  <h4>⑤ 防抖自动推送 / 全量推送（本地 → 远端）</h4>
+  <pre class="mermaid">
+sequenceDiagram
+    participant S as DataStore
+    participant E as SyncEngine
+    participant C as ContentsApi.pushRemote
+    participant P as Worker代理
+    participant G as GitHub仓库
+    participant LS as localStorage
+    S->>E: schedulePush() (Article 变更)
+    E->>E: setTimeout 1.5s 防抖
+    E->>C: pushRemote(articles, manifestSha, shas)
+    loop 逐文件
+        C->>P: PUT kb/ID.md 带 blob sha 乐观锁
+        P->>G: 写文件
+    end
+    C->>P: PUT manifest.json 带 manifestSha 乐观锁
+    P->>G: 写 manifest
+    alt 冲突 409
+        G-->>C: ConflictError
+        C-->>E: conflictSlug
+        E->>E: 重试 ≤ 3 次 退避 350ms×attempt
+    else 成功
+        C-->>E: 新 manifestSha
+        E->>S: setManifestSha(sha)
+        S->>LS: setItem wb.manifestSha.v1
+    end
+  </pre>
+
+  <h4>⑥ 发布到公开镜像库 setPublished</h4>
+  <pre class="mermaid">
+sequenceDiagram
+    actor U as 用户
+    participant S as DataStore
+    participant C as ContentsApi
+    participant P as 镜像Worker
+    participant M as 公开镜像仓库
+    participant LS as localStorage
+    U->>S: setPublished(id, true 或 false)
+    S->>S: touch() + schedulePush()
+    alt 有 token
+        S->>C: publishToMirror / unpublishFromMirror
+        C->>P: PUT / DELETE 镜像库 kb/ID.md
+        P->>M: Contents API
+        alt 失败
+            M-->>C: 错误
+            C-->>S: 抛错
+            S->>S: 回滚 published=!published
+            S->>LS: touch() 落盘
+        end
+    end
+  </pre>
+</section>
+
+<!-- §4 -->
+<section id="s4">
+  <h2>§4 同步机制</h2>
+
+  <h3>4.1 同步状态机（SyncPhase）</h3>
+  <pre><code>idle → syncing → ok | error | off
+            ↑___________↓ (轮询 / 防抖推送循环)</code></pre>
+  <ul>
+    <li><code>off</code>：未启用同步，或已启用但配置不完整（不发起请求，避免空 repo 触发 404 误报）。</li>
+    <li><code>syncing</code>：拉取/合并/推送进行中，由 <code>adapter.setPhase</code> 驱动 UI（SyncChip）。</li>
+  </ul>
+
+  <h3>4.2 LWW 合并（services/sync/merge.ts）</h3>
+  <p>以 <code>id</code> 为主键，<code>updatedAt</code> 大者胜，相等保留本地；合并后按 <code>createdAt</code> 倒序。墓碑（<code>deleted:true</code>）同样参与合并，保证删除可跨端传播。</p>
+  <pre><code>function mergeEntities(local, remote){
+  const map = new Map()
+  for (const it of local) map.set(it.id, it)
+  for (const r of remote){
+    const l = map.get(r.id)
+    if (!l || r.updatedAt > l.updatedAt) map.set(r.id, r)  // 远端较新则覆盖
+  }
+  return [...map.values()].sort((a,b)=> b.createdAt - a.createdAt)
+}</code></pre>
+
+  <h3>4.3 墓碑 TTL（services/sync/serialize.ts）</h3>
+  <p>软删除记录保留 <code>TOMBSTONE_TTL = 30 天</code>，过期后在 <code>cleanupTombstones</code>（序列化前）清理。保留窗口用于让删除操作有机会传播到其它端；窗口内保留的墓碑会被推送到远端。</p>
+
+  <h3>4.4 乐观锁 & 冲突重试（engine.ts / contents.ts）</h3>
+  <ul>
+    <li><b>乐观锁</b>：推送 <code>manifest.json</code> / 单个 <code>kb/&lt;id&gt;.md</code> 时携带远端当前 <code>sha</code>；远端若已被改动，GitHub 返回 409。</li>
+    <li><b>冲突重试</b>：<code>conflictSlug !== null</code> 时，重拉远端合并后重试，最多 <code>MAX_RETRY=3</code> 次，退避 <code>350ms × attempt</code>；超限置 <code>phase='error'</code>。</li>
+    <li><b>并发排队</b>：<code>inFlight</code> Promise 复用，避免"忙即返回 false"导致的写丢失（commit 81429d7）。</li>
+    <li><b>防抖推送</b>：<code>PUSH_DEBOUNCE=1500ms</code>，连续编辑只触发一次同步。</li>
+    <li><b>轮询</b>：<code>poll</code>（默认 20000ms，钳制 5s~300s），<code>document.hidden</code> 时跳过以省流量。</li>
+  </ul>
+  <div class="note">已踩坑固化：冲突重试循环每次必须重拉远端 manifest sha 作为乐观锁基准，不能用本地陈旧 sha，否则 409 → 死循环（见 <code>engine.ts:88</code> 注释）。</div>
+</section>
+
+<!-- §5 -->
+<section id="s5">
+  <h2>§5 优化建议落地设计</h2>
+  <p>以下 7 项基于现状评估，按收益/风险排序。每项含动机、代码草图与影响面。均为<strong>非破坏性重构</strong>，保持 store 对外 API 不变，视图层无需改动。</p>
+
+  <!-- 1 -->
+  <div class="card">
+    <h3 style="margin-top:0"><span class="tag t-ok">高收益·低风险</span> ① Store 启动副作用解耦</h3>
+    <p><b>动机：</b><code>engine.sync()</code> 与 <code>startPolling()</code> 写死在 <code>useDataStore()</code> 定义体内（<code>data.ts:303-304</code>），首次任意组件使用 store 即触发网络与定时器，难以测试与控制生命周期（如 HMR、测试环境）。</p>
+    <pre><code>// 现状
+const engine = createSyncEngine(adapter, { fetchRemote, pushRemote })
+engine.sync(); engine.startPolling()   // 副作用耦合在定义体
+
+// 改为显式 init()
+let started = false
+function init(){ if (started) return; started = true; engine.sync(); engine.startPolling() }
+return { ..., init }
+
+// App.vue
+const store = useDataStore()
+onMounted(() => store.init())</code></pre>
+    <p class="muted">影响面：仅 <code>data.ts</code> + <code>App.vue</code>；store 返回集增加 <code>init</code>。</p>
+  </div>
+
+  <!-- 2 -->
+  <div class="card">
+    <h3 style="margin-top:0"><span class="tag t-ok">高收益·中风险</span> ② 落盘节流 + 分片存储</h3>
+    <p><b>动机：</b><code>persist()</code> 每次 <code>JSON.stringify(cleanupTombstones(data))</code> 全量写入，文章/待办量大时主线程阻塞、写放大严重（每次编辑都重写整个数据集）。</p>
+    <pre><code>// 节流：合并多次 touch 到空闲帧
+let pending = false
+function schedulePersist(){
+  if (pending) return
+  pending = true
+  const run = () => { pending = false; persist() }
+  (window.requestIdleCallback || ((f)=>setTimeout(f,200)))(run)
+}
+
+// 分片（可选，配合 per-file LWW 天然契合）：
+//   wb.article.&lt;id&gt; = 单篇序列化；wb.todo.&lt;id&gt; = 单条
+//   索引 wb.data.v1 仅存 id 列表 + 元信息
+//   加载时按需拼装；写入只落变更的那一篇</code></pre>
+    <p class="muted">影响面：<code>data.ts</code> 的 <code>loadData/persist/touch</code>；若分片需改 <code>applyRemote</code> 与 <code>storage</code> 合并逻辑。</p>
+  </div>
+
+  <!-- 3 -->
+  <div class="card">
+    <h3 style="margin-top:0"><span class="tag t-info">低effort·中收益</span> ③ Config 缓存</h3>
+    <p><b>动机：</b><code>adapter.getConfig()</code> 在 <code>sync</code> 每轮、<code>startPolling</code> 每次都 <code>JSON.parse(localStorage)</code>（<code>data.ts:279,281</code>）。配置变更极少，重复解析浪费。</p>
+    <pre><code>let cfgCache: Config | null = null
+function loadConfig(): Config {            // 首次读盘并缓存
+  if (cfgCache) return cfgCache
+  ...原逻辑...
+  cfgCache = raw ? parsed : fallback
+  return cfgCache
+}
+function saveConfig(cfg){ cfgCache = cfg; localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); ... }</code></pre>
+    <p class="muted">影响面：仅 <code>data.ts</code> 内的 <code>loadConfig/saveConfig</code>。</p>
+  </div>
+
+  <!-- 4 -->
+  <div class="card">
+    <h3 style="margin-top:0"><span class="tag t-info">低effort</span> ④ 清理死字段 <code>todosSha</code></h3>
+    <p><b>动机：</b><code>Manifest.todosSha</code> 在类型与 <code>emptyManifest()</code> 中存在，但当前 Todo 未同步、该字段未被写入，属无效字段，误导后续维护者；若 §6 落地 Todo 远端同步，此字段可重新启用为 Todo 的 sha 索引，否则应清理。</p>
+    <pre><code>// src/types/index.ts
+interface Manifest { version:1; updatedAt:number; articles:Record&lt;string,ManifestEntry&gt; }
+// 删除 todosSha 字段及其在 manifest.ts 中的赋值</code></pre>
+    <p class="muted">影响面：<code>types/index.ts</code>、<code>github/manifest.ts</code>；需同步检查远端已存在的 manifest.json 兼容性（读取时忽略未知字段即可）。</p>
+  </div>
+
+  <!-- 5 -->
+  <div class="card">
+    <h3 style="margin-top:0"><span class="tag t-warn">中收益·中风险</span> ⑤ 跨标签同步 manifestSha</h3>
+    <p><b>动机：</b><code>storage</code> 事件只合并 articles/todos，<b>不</b>合并 <code>manifestSha</code>。多标签页各自持不同乐观锁 → 冲突重试概率上升。</p>
+    <pre><code>window.addEventListener('storage', (e) => {
+  if (e.key === MANIFEST_SHA_KEY && e.newValue) {
+    manifestSha.value = e.newValue
+    return
+  }
+  if (e.key !== DATA_KEY || !e.newValue) return
+  ...原 mergeLWW 逻辑...
+})</code></pre>
+    <p class="muted">影响面：<code>data.ts</code> 的 <code>storage</code> 监听；需确认 manifest.json 写入后 sha 已落 <code>wb.manifestSha.v1</code>（当前 <code>setManifestSha</code> 已写盘）。</p>
+  </div>
+
+  <!-- 6 -->
+  <div class="card">
+    <h3 style="margin-top:0"><span class="tag t-warn">低风险提醒</span> ⑥ 写失败不再静默吞掉</h3>
+    <p><b>动机：</b><code>persist()</code> / <code>setItem</code> 异常被 <code>catch</code> 静默吞掉（<code>data.ts:114,296</code>）。配额满或隐私模式会静默丢数据，用户无感知。</p>
+    <pre><code>function persist(){
+  data.value.updatedAt = Date.now()
+  try { localStorage.setItem(DATA_KEY, JSON.stringify(cleanupTombstones(data.value))) }
+  catch (e) { adapter.setPhase('error'); console.warn('[data] 本地落盘失败', e) }
+}</code></pre>
+    <p class="muted">影响面：<code>data.ts</code>；建议配合 UI 暴露（SyncChip 已有 error 态可复用）。</p>
+  </div>
+
+  <!-- 7 -->
+  <div class="card">
+    <h3 style="margin-top:0"><span class="tag t-info">低概率</span> ⑦ uid 防碰撞</h3>
+    <p><b>动机：</b><code>uid()</code> 用 <code>Date.now()+random</code>，极端高频并发（同毫秒）有极小碰撞风险。</p>
+    <pre><code>function uid(): string {
+  return (crypto.randomUUID?.() ?? (Date.now().toString(36)+Math.random().toString(36).slice(2,10)))
+}</code></pre>
+    <p class="muted">影响面：仅 <code>data.ts</code> 的 <code>uid()</code>，无外部契约变化。</p>
+  </div>
+
+  <h3>落地优先级建议</h3>
+  <table>
+    <tr><th>批次</th><th>项</th><th>理由</th></tr>
+    <tr><td>P0（必做）</td><td>① 启动解耦、② 落盘节流</td><td>稳定性收益最大、改动集中、风险可控</td></tr>
+    <tr><td>P1（建议）</td><td>③ config 缓存、⑤ 跨标签 manifestSha、⑥ 写失败提示</td><td>修复具体缺陷，改动小</td></tr>
+    <tr><td>P2（可选）</td><td>④ 死字段清理、⑦ uid 强化</td><td>整洁度/健壮性，可随缘</td></tr>
+  </table>
+  <div class="note">②的分片存储为可选增强；若先只做"节流"已能缓解主线程阻塞，分片可后续独立评估。所有改动均保持 <code>store</code> 对外方法签名不变，视图层零改动。<b>分片存储的完整重构方案见 §6（单实体文件化 + 分页 + 索引驱动同步）。</b></div>
+</section>
+
+<!-- §6 -->
+<section id="s6">
+  <h2>§6 存储层 / 数据层重构方案（单实体文件化 + 分页 + 索引驱动同步）</h2>
+  <p>本节基于已达成共识的分层模型，给出可落地的重构方案。目标：① 把"全量单 blob"改为<b>单实体一个文件</b>，减少写入放大；② 引入<b>分页（page / size / total）</b>与<b>索引</b>，降低全量遍历次数；③ Todo 与 Article 均经 StorageLayer 统一持久化，本地 IndexedDB 缓存 + 远端 GitHub 永久存储（按需同步）。</p>
+
+  <h3>6.1 共识分层模型</h3>
+  <pre class="mermaid">
+flowchart TD
+    UL[上层: 视图 / 业务] --> SL
+    subgraph SL[存储层 StorageLayer]
+      direction LR
+      M1[SaveTodo / SaveArticle]
+      M2[ListTodo / ListArticle: page,size 返回 items,total]
+      M3[DeleteTodo / DeleteArticle]
+      M4[SaveImage 委托图云]
+    end
+    SL -->|本地缓存 读写| DB
+    SL -->|远端永久 同步| DG
+    subgraph DG[数据层·永久实现 GitHub 文件夹]
+      direction LR
+      A0[todos/ID.json]
+      A1[kb/ID.md]
+      A2[manifest.json 索引]
+      A3[images/ 图云默认 git]
+    end
+    subgraph DB[数据层·临时实现 浏览器 IndexedDB]
+      direction LR
+      B1[todos 对象库]
+      B2[articles 本地缓存]
+    end
+    DG --> IC[图云层 ImageCloudLayer]
+    IC --> GIT[(默认 git: images/HASH, 可换 R2/OSS/S3)]
+  </pre>
+
+  <h3>6.2 范围锁定</h3>
+  <table>
+    <tr><th>决策点</th><th>结论</th></tr>
+    <tr><td>存储层接口</td><td><code>SaveTodo / SaveArticle / ListTodo / ListArticle / DeleteTodo / DeleteArticle</code> + <code>SaveImage</code></td></tr>
+    <tr><td>Todo 路由</td><td>→ 本地 IndexedDB 缓存 + 远端 GitHub 永久存储（<code>todos/&lt;id&gt;.json</code>），与 Article 共用 StorageLayer 双写路径，按需同步</td></tr>
+    <tr><td>Article 路由</td><td>→ 本地 IndexedDB 缓存 + 远端 GitHub 永久存储（<code>kb/&lt;id&gt;.md</code>），双向同步</td></tr>
+    <tr><td>分页覆盖</td><td><b>含远端按页拉取</b>：列表 / 读写按页；同步合并改为<b>索引 / 分块驱动</b></td></tr>
+    <tr><td>浏览器实现</td><td><b>IndexedDB</b>（支持大量单实体文件 + 二进制图片 + 异步不阻塞）</td></tr>
+    <tr><td>图云默认</td><td>git（<code>images/HASH</code>），仅 quick start；非最优但可快速启动，后续可换对象存储</td></tr>
+  </table>
+
+  <h3>6.3 存储层接口契约（StorageLayer）</h3>
+  <p>存储层对上是统一接口，内部按实体类型路由到不同数据层实现；调用方（视图 / 业务）不感知底层是 GitHub 还是 IndexedDB。</p>
+  <pre><code>interface StorageLayer {
+  // ── Todo：本地 IndexedDB 缓存 + 远端 GitHub 同步 ──
+  SaveTodo(t: Todo): Promise&lt;void&gt;
+  ListTodo(page: number, size: number): Promise&lt;{ items: Todo[]; total: number }&gt;
+  DeleteTodo(id: string): Promise&lt;void&gt;        // 本地软删 / 物理删
+
+  // ── Article：远端永久（GitHub 文件夹）──
+  SaveArticle(a: Article): Promise&lt;void&gt;
+  ListArticle(page: number, size: number): Promise&lt;{ items: Article[]; total: number }&gt;
+  DeleteArticle(id: string): Promise&lt;void&gt;      // 墓碑，待同步传播
+
+  // ── 图云 ──
+  SaveImage(blob: Blob): Promise&lt;string&gt;        // 返回可引用 url
+}</code></pre>
+  <div class="note">路由规则写在存储层内部：<code>SaveTodo/SaveArticle/...</code> 均先写本地 IndexedDB 缓存、再异步同步到远端 GitHub（Todo → <code>todos/&lt;id&gt;.json</code>，Article → <code>kb/&lt;id&gt;.md</code>）；视图层只面对 <code>StorageLayer</code>。</div>
+
+  <h3>6.4 数据层实现（DataLayer 接口 + 双实现）</h3>
+  <pre><code>interface DataLayer {
+  Save&lt;T&gt;(kind: 'todo'|'article', id: string, entity: T): Promise&lt;void&gt;
+  Get&lt;T&gt;(kind: 'todo'|'article', id: string): Promise&lt;T | null&gt;
+  List&lt;T&gt;(kind: 'todo'|'article', page: number, size: number): Promise&lt;{ items: T[]; total: number }&gt;
+  Delete(kind: 'todo'|'article', id: string): Promise&lt;void&gt;
+  // 索引：维护 total 与有序 id 列表，供分页与同步比对
+  readIndex(): Promise&lt;DataIndex&gt;
+}</code></pre>
+  <table>
+    <tr><th>实现</th><th>承载</th><th>物理结构</th></tr>
+    <tr><td>永久实现（GitHub 文件夹）</td><td>Todo + Article + 图片</td><td><code>todos/&lt;id&gt;.json</code>、<code>kb/&lt;id&gt;.md</code>（frontmatter+正文）、<code>manifest.json</code>（索引）、<code>images/&lt;hash&gt;</code></td></tr>
+    <tr><td>临时实现（浏览器 IndexedDB）</td><td>Todo + Article 本地缓存</td><td>object store <code>todos</code> / <code>articles</code>，key = id；独立 <code>index</code> store 存分页元数据</td></tr>
+  </table>
+
+  <h3>6.5 分页与索引（减少全量遍历的核心）</h3>
+  <p><b>索引是分页的前提</b>：无论本地还是远端，都维护一份轻量 <code>DataIndex</code>（不存正文），形如：</p>
+  <pre><code>interface DataIndex {
+  total: number
+  order: string[]                       // 有序 id 列表（按 updatedAt 倒序）
+  meta: Record&lt;string, { updatedAt: number; deleted: boolean; sha?: string }&gt;
+}</code></pre>
+  <ul>
+    <li><b>列表按页</b>：<code>ListTodo/ListArticle(page,size)</code> 先读对应索引（GitHub 侧 <code>manifest.json</code>，本地侧 IndexedDB <code>index</code> store）→ 取 <code>order.slice((page-1)*size, page*size)</code> 的本页 id → 仅 <code>GET</code> 这些 <code>todos/&lt;id&gt;.json</code> / <code>kb/&lt;id&gt;.md</code>。<b>全量遍历被降为 O(页大小)</b>。</li>
+    <li><b>本地 Todo 分页</b>：IndexedDB 游标 <code>cursor.advance((page-1)*size)</code> + <code>limit(size)</code>，天然分页，无全量加载。</li>
+    <li><b>同步合并改为索引驱动（含远端按页拉取）</b>：拉取只取轻量 <code>manifest.json</code> → 与本地索引做 LWW（按 <code>updatedAt</code>，相等保留本地）→ 仅找出<b>真有差异</b>的实体 → 只 <code>GET/PUT</code> 这些变更文件。<b>不再为合并而全量拉取正文</b>，传输量从 O(N) 降到 O(差异数)。</li>
+  </ul>
+  <div class="note">关键转变：原 <code>fetchRemote</code> 是"拉全部 kb/*.md 再合并"，重构后是"拉索引 → 比对 → 只拉变更文件"。UI 分页与同步分块共用同一份索引，避免重复设计。</div>
+
+  <h3>6.6 图云层（ImageCloudLayer）</h3>
+  <ul>
+    <li><b>默认 git（quick start）</b>：<code>SaveImage(blob)</code> 计算内容哈希 → 落 <code>images/&lt;hash&gt;.&lt;ext&gt;</code> → 返回 <code>images/HASH</code> 引用；文章正文以 <code>![](images/HASH)</code> 引用。零额外依赖，可立即跑通。</li>
+    <li><b>已知取舍</b>：二进制进 git 会膨胀仓库、拖慢 Contents API 与克隆。仓库提供方宜加 <code>.gitattributes</code> 对 <code>images/</code> 设 <code>linguist-generated</code> 或后续迁对象存储。</li>
+    <li><b>可换对象存储</b>：图云层内部抽象 <code>put(blob)→url</code>，未来实现切换为 Cloudflare R2 / S3 / OSS 时，仅替换该层，文章只存 URL 不变。</li>
+  </ul>
+
+  <h3>6.7 落地步骤与优先级</h3>
+  <table>
+    <tr><th>批次</th><th>项</th><th>说明</th></tr>
+    <tr><td>P0</td><td>① 抽象 <code>DataLayer</code> 接口 + IndexedDB 实现（承载 Todo）</td><td>先把 Todo 从 <code>wb.data.v1</code> 全 blob 迁到单实体 + 索引分页，验证分页降遍历收益</td></tr>
+    <tr><td>P0</td><td>② 引入 <code>DataIndex</code>，<code>ListTodo/ListArticle</code> 按页</td><td>本地游标分页；远端先读 manifest 索引</td></tr>
+    <tr><td>P1</td><td>③ <code>StorageLayer</code> 路由：统一双写（本地 IndexedDB 缓存 + 远端 GitHub 同步），Todo 与 Article 共用</td><td>视图层切到 <code>StorageLayer</code>，隐藏底层差异</td></tr>
+    <tr><td>P1</td><td>④ 远端单文件化 <code>kb/&lt;id&gt;.md</code> + manifest 仅存索引</td><td>替换现有全量 <code>pushRemote/fetchRemote</code></td></tr>
+    <tr><td>P2</td><td>⑤ 同步合并索引驱动（只拉变更文件）</td><td>把"全量拉正文合并"改为"索引比对 + 差分拉取"，完成含远端按页拉取目标</td></tr>
+    <tr><td>P2</td><td>⑥ 图云默认 git 落地，预留对象存储切换点</td><td>先 quick start，接口留扩展</td></tr>
+  </table>
+
+  <h3>6.8 风险与回退</h3>
+  <ul>
+    <li><b>迁移兼容</b>：旧 <code>wb.data.v1</code> 单 blob 需在首次启动迁移为 IndexedDB 单实体 + 索引；远端旧 <code>manifest.json</code> 字段扩展为含 <code>total/order</code>，读取端对未知字段向后兼容。</li>
+    <li><b>路由一致性</b>：Todo 与 Article 共用"本地缓存 + 远端同步"双写路径，路由层需保证两者索引（<code>total/order</code>）同步更新，可用单测覆盖。</li>
+    <li><b>索引与实体不一致</b>：写实体必须同步更新索引（同事务 / 同批次），否则分页 total 失真；IndexedDB 可用事务保证原子，GitHub 侧以 manifest 为索引权威。</li>
+    <li><b>回退</b>：分阶段合入，每批保持视图层 API 不变；若 IndexedDB 实现受阻，P0 可先保留 <code>wb.data.v1</code> 但加索引分页作为过渡。</li>
+  </ul>
+</section>
+
+<!-- §7 -->
+<section id="s7">
+  <h2>§7 生命周期与极简模式（需求存在性证明）</h2>
+  <p>本章先界定浏览器侧存储（IndexedDB）的生命周期，再定义<strong>极简模式</strong>：<b>初始化时未填写任何 GitHub 相关配置，应用必须完整可运行</b>。并论证该需求在当前架构下天然成立（存在性证明），而非需要额外开发的特例。</p>
+
+  <h3>7.1 浏览器侧存储生命周期（IndexedDB）</h3>
+  <table>
+    <tr><th>维度</th><th>行为</th></tr>
+    <tr><td>作用域</td><td>按 <code>origin</code>（协议+域名+端口）隔离；与 tab / 会话无关</td></tr>
+    <tr><td>留存</td><td>跨会话、跨浏览器重启<strong>永久留存</strong>；<b>无内置 TTL / 过期</b></td></tr>
+    <tr><td>消失途径</td><td>① 应用主动 <code>deleteDatabase</code> / <code>delete</code>；② 用户手动清站点数据；③ 无痕模式会话结束清空；④ <b>存储压力回收</b>（best-effort 型被 LRU 静默回收）；⑤ 分区存储清理连带</td></tr>
+    <tr><td>配额</td><td>每 origin 动态配额（量级 GB）；写满抛 <code>QuotaExceededError</code>；<code>navigator.storage.estimate()</code> 查 <code>usage/quota</code></td></tr>
+    <tr><td>持久化开关</td><td><code>navigator.storage.persist()</code> 申请持久化（获批后免于存储压力回收，仅用户手动清才丢）；默认 best-effort 可被回收</td></tr>
+    <tr><td>事务持久性</td><td>默认 <code>durability:'default'</code>（崩溃安全）；<code>'strict'</code> 强制 fsync（更慢）</td></tr>
+  </table>
+  <div class="note">对本设计的含义：IndexedDB 是<strong>本地缓存层</strong>，远端 GitHub 才是永久真相源（含 Todo 也落 <code>todos/ID.json</code>）。因此本地被回收只是"下次从远端重拉"，不丢数据——这是把本地层设为可驱逐的安全前提。</div>
+
+  <h3>7.2 极简模式定义</h3>
+  <p><b>极简模式</b>：启动时 <code>Config</code> 中 <code>enabled=false</code> 或 <code>repo/branch/token</code> 不完整（即 <code>isConfigComplete(cfg)===false</code>），应用仍须 100% 可用：</p>
+  <ul>
+    <li>Todo / Article 的增删改查、双向链接、标题联动改写全部本地可用；</li>
+    <li>图片：图云默认 git 需远端仓库，故极简模式下 <code>SaveImage</code> <strong>降级为本地</strong>——写入 IndexedDB <code>images</code> store（DataURL/blob），文章引用本地 blob URL；配置远端后可迁移到 git；</li>
+    <li>同步 / 冲突 / 轮询全部跳过，无任何网络请求，不报错、不卡启动。</li>
+  </ul>
+
+  <h3>7.3 需求存在性证明（为何极简模式天然成立）</h3>
+  <p>极简模式不是新增特性，而是架构的<strong>默认降级态</strong>。证明链：</p>
+  <pre><code>StorageLayer 双写路径：
+  本地 IndexedDB 写入 = 同步 / 首要（必然成功，无网络依赖）
+  远端 GitHub 同步    = 异步 / 可选
+
+启动判定：
+  isConfigComplete(cfg) === false  ──►  SyncEngine 置 phase='off'
+                                     （与现有 engine.ts:67-75 的 off 分支一致）
+                                     ──► save/list/delete 仅命中本地实现
+  isConfigComplete(cfg) === true   ──►  启动轮询 + 立即 sync（同步模式）
+
+结论：零配置 → 仅本地路径生效 → 应用完整可运行。
+       故"极简可运行"是架构不变量，无需为它写专门分支。</code></pre>
+  <pre class="mermaid">
+flowchart TD
+    START[应用启动] --> LOAD[加载本地 IndexedDB: todos / articles / index]
+    LOAD --> CFG{配置完整? isConfigComplete}
+    CFG -->|否 极简模式| OFF[phase = off 仅本地 IndexedDB]
+    CFG -->|是 同步模式| ON[启动轮询 加 立即 sync]
+    OFF --> RUN[完整本地可用: 增删改查 双链 图片本地]
+    ON --> RUN2[本地 加 远端双向同步]
+    OFF -.用户后续填配置 saveConfig.-> ON
+  </pre>
+
+  <h3>7.4 极简模式边界与降级</h3>
+  <table>
+    <tr><th>能力</th><th>极简模式</th><th>同步模式</th></tr>
+    <tr><td>CRUD / 双链</td><td>✅ 本地完整</td><td>✅ 本地 + 远端</td></tr>
+    <tr><td>图片</td><td>本地 IndexedDB（DataURL）</td><td>git images/HASH（可换对象存储）</td></tr>
+    <tr><td>跨设备</td><td>❌ 仅单机</td><td>✅ 多端一致</td></tr>
+    <tr><td>网络请求</td><td>0</td><td>轮询 + 推送</td></tr>
+    <tr><td>日后升级</td><td colspan="2" style="text-align:center">填配置 → <code>saveConfig</code> → 首次 sync 全量把本地推上远端，无缝转同步模式</td></tr>
+  </table>
+
+  <h3>7.5 生命周期兜底（实现 P0 必做）</h3>
+  <ul>
+    <li><b>持久化申请</b>：<code>StorageLayer</code> 初始化时 <code>await navigator.storage.persist()</code>，降低本地缓存被静默回收导致频繁全量重拉。</li>
+    <li><b>配额保护</b>：写前 <code>estimate()</code> 评估；捕获 <code>QuotaExceededError</code> 提示用户清理或减小图片。</li>
+    <li><b>回收自愈</b>：IndexedDB 被清后，极简模式以空库启动仍可用；同步模式下则从远端重新拉取恢复，无需特殊处理。</li>
+  </ul>
+
+  <h3>7.6 验证（存在性证明的可执行化）</h3>
+  <p>建议补集成测试固化该不变量：<b>不写任何 GitHub 配置启动</b> → 断言 <code>addTodo / updateArticle / 双向链接</code> 全部成功，且 <code>fetch</code>（GitHub API）从未被调用（mock 计数 0）。该测试即"极简模式需求存在性"的机器证明。</p>
+  <div class="note">归并到 §6 落地计划：7.5 的 <code>persist()/estimate()/QuotaExceededError</code> 处理应并入 P0（IndexedDB 承载 Todo 时一并落地）；7.6 测试作为 P0 的验收门槛。</div>
+</section>
+
+</main>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+</script>
+
+<footer>
+  workbench 数据存储层设计文档 · 基于 <code>src/stores/data.ts</code> 等源码整理 · 纯静态交付，可直接浏览器打开
+</footer>
+</body>
+</html>
