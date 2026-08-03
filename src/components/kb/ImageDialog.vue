@@ -1,31 +1,30 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { Editor } from '@milkdown/kit/core'
-import { compressImage } from '@/lib/image'
+import { compressImageBlob, blobToDataUri } from '@/lib/image'
 import { insertImage } from './editorCommands'
 
-const props = defineProps<{ editor: Editor | null }>()
+const props = defineProps<{ editor: Editor | null; upload?: (blob: Blob) => Promise<string> }>()
 const emit = defineEmits<{ close: [] }>()
 
 const url = ref('')
 const busy = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 
-/** 通用：压缩 src 后插入 image 节点 */
-async function insertCompressed(blob: Blob, fallbackSrc?: string) {
-  if (!props.editor) return
-  try {
-    const dataUri = await compressImage(blob)
-    insertImage(props.editor, dataUri, '')
-  } catch {
-    if (fallbackSrc) {
-      insertImage(props.editor, fallbackSrc, '')
+/** 压缩为 Blob → 优先上传拿 key，失败回退 data URI（保证可见） */
+async function toSrc(blob: Blob, fallbackSrc?: string): Promise<string> {
+  if (props.upload) {
+    try {
+      return await props.upload(blob)
+    } catch {
+      /* 上传失败回退 */
     }
   }
-  emit('close')
+  if (fallbackSrc) return fallbackSrc
+  return blobToDataUri(blob)
 }
 
-/** URL 确认：fetch → blob → 压缩 → 插入；CORS 失败降级用原 URL */
+/** URL 确认：fetch → blob → 压缩 → 上传/内嵌；CORS 失败降级用原 URL */
 async function onConfirmUrl() {
   const u = url.value.trim()
   if (!u || !props.editor) return
@@ -35,30 +34,32 @@ async function onConfirmUrl() {
     if (!res.ok) throw new Error('fetch failed')
     const blob = await res.blob()
     if (!blob.type.startsWith('image/')) throw new Error('not image')
-    await insertCompressed(blob, u)
-    ElMessage.success('图片已下载并压缩')
+    const src = await toSrc(await compressImageBlob(blob), u)
+    insertImage(props.editor, src, '')
+    ElMessage.success('图片已处理并插入')
   } catch {
-    // CORS 或下载失败：降级用原 URL
+    // CORS 或下载失败：降级用原 URL（外部引用，不落云）
     insertImage(props.editor, u, '')
-    ElMessage.warning('无法下载压缩，已用原址插入')
+    ElMessage.warning('无法下载处理，已用原址插入')
     emit('close')
   } finally {
     busy.value = false
   }
 }
 
-/** 文件选择 → 压缩 → 插入 */
+/** 文件选择 → 压缩 → 上传（拿 key）/ 回退内嵌 */
 async function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file || !props.editor) return
   busy.value = true
   try {
-    const dataUri = await compressImage(file)
-    insertImage(props.editor, dataUri, '')
-    ElMessage.success('图片已压缩插入')
+    const blob = await compressImageBlob(file)
+    const src = await toSrc(blob)
+    insertImage(props.editor, src, '')
+    ElMessage.success('图片已插入')
   } catch {
-    ElMessage.error('图片压缩失败')
+    ElMessage.error('图片处理失败')
   } finally {
     busy.value = false
     emit('close')

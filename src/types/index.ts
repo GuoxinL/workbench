@@ -53,7 +53,8 @@ export interface Manifest {
   version: 1
   updatedAt: number
   articles: Record<string, ManifestEntry>
-  todosSha: string
+  /** 待办的轻量索引（per-file LWW 的 sha 缓存）；旧远端 manifest 可能无此字段，故可选 */
+  todos?: Record<string, ManifestEntry>
 }
 
 export interface WorkbenchData {

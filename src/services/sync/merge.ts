@@ -40,6 +40,11 @@ export function mergeArticles(local: Article[], remote: Article[]): { items: Art
   return mergeEntities(local, remote)
 }
 
+/** 逐条 LWW 合并待办数组，与文章共用同一泛型逻辑（P1：Todo 进同步）。 */
+export function mergeTodos(local: Todo[], remote: Todo[]): { items: Todo[]; changed: boolean } {
+  return mergeEntities(local, remote)
+}
+
 export function mergeInto(local: WorkbenchData, remote: WorkbenchData): MergeResult {
   const t = mergeEntities(local.todos, remote.todos)
   const n = mergeEntities(local.articles, remote.articles)

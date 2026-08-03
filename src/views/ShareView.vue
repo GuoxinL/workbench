@@ -46,7 +46,18 @@ onMounted(async () => {
     title.value = String(data.title ?? '未命名文章')
     tags.value = Array.isArray(data.tags) ? (data.tags as unknown[]).map(String) : []
     createdAt.value = Number(data.createdAt ?? 0)
-    html.value = renderMarkdown(content)
+    // P2 ⑥ 渲染端：git 图片 key（`images/<sha>`）同步改写为 raw 直链；
+    // 本地 key（`local-img:<sha>`）阅读端无作者 IDB，原样保留（破图属预期，本地图不跨端）。
+    const branch = store.getConfig().branch || 'main'
+    const repo = publicRepo.value
+    html.value = renderMarkdown(content, {
+      resolveImage: (key: string) => {
+        if (repo && key.startsWith('images/')) {
+          return `https://raw.githubusercontent.com/${repo}/${branch}/${key}`
+        }
+        return key
+      },
+    })
   } catch {
     error.value = '网络错误，无法加载文章'
   } finally {
