@@ -89,8 +89,8 @@
 
 > 本章节内容**不会**被 skill 刷新覆盖，请按项目实际情况填充。
 
-> Source: `README.md`、`index.html`、`bump-version.sh`、`js/store.js:31-39`、`git remote -v`
-> Last-verified: 2026-07-31（本节命令已在 WSL2 / Ubuntu + Python 3.12.3 实跑）
+> Source（以磁盘真实代码为准）：`package.json`、`vite.config.ts`、`.github/workflows/deploy.yml`、`src/stores/data.ts`、`src/services/sync/engine.ts`、`src/services/github/*`、`proxy/cloudflare-worker.js`
+> Last-verified: 2026-08-04
 
 ### ⚠️ 本项目不存在团队测试环境
 
@@ -100,25 +100,25 @@
 |---------------|---------------|
 | 环境管理 CLI（`创建环境` / `热更代码` / `释放环境`） | ❌ 未接入。本机执行 `<环境管理 CLI> --version` 会 `command not found`，且**无需**安装 |
 | 远端容器执行命令 / 查日志 | ❌ 不适用。无容器、无服务端进程、无日志文件 |
-| 数据库查询 | ❌ 不适用。无数据库（数据 = localStorage + GitHub 上一个 JSON 文件） |
+| 数据库查询 | ❌ 不适用。无数据库（数据 = 浏览器 localStorage + IndexedDB + GitHub 数据仓库） |
 | 创建 / 销毁测试实例 | ❌ 不适用。无实例概念 |
 | SOP Commit 阶段「释放环境」强制前置动作 | ❌ 无环境可释放，该动作**空过**（在 `09-commit.md` 记「无测试环境，无需释放」即可） |
 
-原因：纯静态前端 PWA，无后端、无构建、无 CI、无制品，`git push` 到 GitHub Pages 即上线（见 [deployment.md](deployment.md)）。全项目只有 **本地** 与 **生产** 两个真实环境。
+原因：纯静态前端 PWA（Vue3 + Vite 标准工程），无后端、无 CI 外的复杂部署，`push main` 触发 GitHub Actions 构建并发布到 GitHub Pages（见 [deployment.md](deployment.md)）。全项目只有 **本地** 与 **生产** 两个真实环境。
 
 ### 组件清单
 
 | 组件名 | 仓库 / 路径 | 主分支 | 备注 |
 |--------|------------|--------|------|
-| 静态站点（唯一可部署单元） | `git@github.com:GuoxinL/workbench.git`，仓库根目录 | `main` | 源码即产物；push 后 GitHub Pages 1–2 分钟自动发布，无流水线 |
-| 数据文件 | `GuoxinL/workbench-data` → `data/workbench.json` | `main` | **必须私有**；不是"部署"对象，由应用经 Contents API 读写 |
+| 静态站点（唯一可部署单元） | `git@github.com:GuoxinL/workbench.git`，仓库根目录 | `main` | Vite 工程；push 后 GitHub Actions 构建并发布到 Pages，无手动流水线 |
+| 数据仓库 | `GuoxinL/workbench-data` → `kb/<id>.md` + `manifest.json` | `main` | **必须私有**；不是"部署"对象，由应用经 Contents API 读写 |
 | API 代理 Worker（可选） | 本仓库 `proxy/cloudflare-worker.js` | — | 手动在 dash.cloudflare.com 粘贴部署，无 CLI / 无 `wrangler.toml` |
 
 ### 常用环境
 
 | 环境名 | 用途 | 地址 | 负责人 | 备注 |
 |--------|------|------|--------|------|
-| 本地 | 开发自验（**唯一的"测试环境"**） | `http://127.0.0.1:8000` | 开发者本人 | `python3 -m http.server 8000 --bind 127.0.0.1`，改完刷新浏览器即可 |
+| 本地 | 开发自验（**唯一的"测试环境"**） | `http://localhost:5173` | 开发者本人 | `npm run dev`（Vite dev server）；改完 HMR 自动刷新 |
 | 生产 | 正式使用 | `https://guoxinl.github.io/workbench/` | Guoxin.Liu | 已验证可达（`curl` 返回 200）；无预发、无灰度 |
 
 ### 「测试环境」的三种替代做法
@@ -127,25 +127,26 @@
 
 | # | 做法 | 操作 | 适用场景 |
 |---|------|------|---------|
-| 1 | **纯本地模式**（最常用） | 起 `python3 -m http.server 8000`，设置面板**关闭「启用同步」** | 绝大多数 UI / 交互 / Markdown / 图谱改动。功能完整，仅不同步（`js/github.js:222` 降级逻辑） |
-| 2 | **换数据文件路径** | 设置面板把「数据文件路径」从 `data/workbench.json` 改成 `data/workbench-test.json`（同仓库同分支） | 需要验证真实同步链路（拉取/合并/推送/冲突重试）又不想动真实数据 |
-| 3 | **换数据仓库或分支** | 设置面板改「仓库」为另一个私有仓库，或改「分支」为 `test` | 需要验证多端合并、墓碑传播等跨设备行为；也可用两个浏览器 profile 模拟两端 |
+| 1 | **纯本地模式**（最常用） | `npm run dev` 起服务，设置抽屉**关闭「启用同步」** | 绝大多数 UI / 交互 / Markdown / 双链改动。功能完整，仅不同步（`src/services/sync/engine.ts` 的 `isEnabled()` / `isConfigComplete()` 守卫） |
+| 2 | **换数据仓库或分支** | 设置抽屉改「仓库」为另一个私有仓库，或改「分支」为 `test`（原 `data/workbench.json` 的 `path` 字段已在重构中移除，无法再用路径区分） | 需要验证真实同步链路（拉取/合并/推送/冲突重试）又不想动真实数据 |
+| 3 | **多端并发模拟** | 用两个浏览器 profile / 两个设备登录同一数据仓库，或分别指向两个测试仓库 | 需要验证多端合并、墓碑传播等跨设备行为 |
 
 > 三种做法**都只改浏览器里的 `wb.cfg.v1` 配置，不改任何代码、不改任何仓库文件**——本项目没有分环境配置文件（见 [env.md](env.md) §3.1）。
 
 线上验证（发布后）只有一步：
 
 ```bash
-# 确认发布生效：线上 wb-version 应等于本次刷新的时间戳
-curl -s https://guoxinl.github.io/workbench/ | grep -o '<meta name="wb-version" content="[^"]*"'
+# 确认站点可达、发布生效
+curl -s -o /dev/null -w "%{http_code}\n" https://guoxinl.github.io/workbench/   # 期望 200
+# 确认页面正常挂载（无白屏）：打开页面交互核验；产物由 Vite 内容 hash 保证缓存失效
 ```
 
 ### 项目特有同步规则 / 排雷点
 
-1. **「同步代码」在本项目指的是数据同步，不是部署同步**。上方 Skill 表里的「热更代码到环境」在本项目不存在；代码上线的唯一通道是 `git push origin main`。
-2. **发布前必须刷新静态资源版本号**（AGENTS.md 红线 3）。Linux / WSL 上 `./bump-version.sh` 会因 BSD sed 语法失败（退出码 2、`index.html` 不变），必须改用 GNU sed 等效命令，详见 [development.md](development.md)「版本号刷新」节。漏刷 = 浏览器命中旧缓存，"改了代码但线上没变"。
-3. **验证时务必强刷**：本地 `Ctrl/Cmd + Shift + R`，或 DevTools → Network 勾 Disable cache。`index.html:5-7` 虽有三个防缓存 meta，但静态资源仍靠 `?v=` 参数区分。
-4. **切换数据仓库 / 路径后先点「测试连接」再点「保存并同步」**。细粒度 PAT 的 Repository access 若没勾上新仓库，会直接 404；写权限不足（只给 Read）也无法同步。
-5. **不要手工编辑远端 `data/workbench.json`**。改坏会触发「远端数据文件不是合法 JSON」，只能删掉让应用重建，或用设置面板「导出备份」的内容覆盖回去。
+1. **「同步代码」在本项目指的是数据同步，不是部署同步**。上方 Skill 表里的「热更代码到环境」在本项目不存在；代码上线的唯一通道是 `git push origin main`（触发 GitHub Actions）。
+2. **发布前必须本地跑过 `npm run build` + `npm test`**（类型检查 + 测试 + 构建全过）。重构后**无需、也不再支持**手工刷 `?v=` 版本号——缓存由 Vite 产物内容 hash 保证（旧 `bump-version.sh` 已移除）。
+3. **本地验证时改完通常 HMR 自动刷新**；若遇强缓存，浏览器 `Ctrl/Cmd + Shift + R` 或 DevTools → Network 勾 Disable cache。生产缓存由 hash 文件控制，重新构建即换新。
+4. **切换数据仓库 / 分支后先点「测试连接」再点「保存」**。细粒度 PAT 的 Repository access 若没勾上新仓库，会直接 404；写权限不足（只给 Read）也无法同步（`src/services/github/diagnose.ts` 校验 `permissions.push`）。
+5. **不要手工编辑远端 `kb/<id>.md` / `manifest.json`**。改坏会触发同步解析失败，只能删掉让应用重建，或用设置抽屉「导出备份」的内容覆盖回去。
 6. **多端并发验证注意 LWW 语义**：合并按记录 `id` + `updatedAt` 逐条取新，同一条记录被两端同时改，较早写入会被丢弃——这是预期行为，不是 bug。
-7. **令牌不要在验证环境里复用生产令牌之外的来路**；无论哪个"环境"，令牌都只存本机 localStorage，绝不能落进任何提交（红线 5）。
+7. **令牌不要在验证环境里复用生产令牌之外的来路**；无论哪个"环境"，令牌都只存本机 `wb.cfg.v1`，绝不能落进任何提交（红线 5）。

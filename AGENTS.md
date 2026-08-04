@@ -1,6 +1,6 @@
 # workbench — AI 协作入口
 
-> **个人工作台**：纯静态前端 PWA（待办卡片 + 双向链接笔记），原生 JavaScript，无框架、无构建、无 npm 依赖；数据存 localStorage 并经 GitHub Contents API 双向同步到数据仓库 `data/workbench.json`；GitHub Pages 托管。维护者：Guoxin.Liu <lgx31@sina.cn>。
+> **个人工作台**：纯客户端单体（Client-only Monolith）PWA（待办卡片 + 双向链接笔记），基于 **Vue3 + Vite + TypeScript + Pinia** 标准构建流水线；本地双重存储（`localStorage` 即时加载层 + `IndexedDB` 结构化层），并经 GitHub Contents API 双向同步到数据仓库 `kb/<id>.md` + `manifest.json`；GitHub Pages（GitHub Actions 构建发布）托管。维护者：Guoxin.Liu <lgx31@sina.cn>。
 >
 > 本文件是 AI 协作的**唯一真源入口**（AGENTS.md）。CODEBUDDY.md / CLAUDE.md 均为指向本文件的软链接。
 > 具体技术文档维护到 `.harness/docs/`，任务产物维护到 `.harness/plans/<任务目录>/`，本文件只做索引 + 恢复协议 + 项目特定红线。
@@ -77,7 +77,7 @@
 | 6 | **IT** | `06-it.md` | 每条用例贴关键日志（含 reqid）；协同模式不跳过 |
 | 7 | **Docs** | `07-docs.md` | 增量更新 `.harness/docs/` |
 | 8 | **Review** | `08-review.md` | 代码审查结果 |
-| 9 | **Commit** | `09-commit.md` | ①（可选）询问 TAPD → ② 释放环境 → ③（可选）TAPD 状态推进 → ④ 写 commit message → ⑤ 更新 overview（边界点 A）→ ⑥ 一次性 `git add` → ⑦ `git commit`（首次仅一次）→ ⑧ `git push` 产生 MR → ⑨（可反复直到 MR 合入）amend 累积修复（一个 MR 一个 commit 原则） |
+| 9 | **Commit** | `09-commit.md` | ① 释放环境 → ② 写 commit message → ③ 更新 overview（边界点 A）→ ④ 一次性 `git add` → ⑤ `git commit`（首次仅一次）→ ⑥ `git push` 产生 MR → ⑦（可反复直到 MR 合入）amend 累积修复（一个 MR 一个 commit 原则） |
 
 ### 任务规模分支
 
@@ -116,15 +116,12 @@
 ### Commit 规范
 
 > 本节是 **SOP 入口**——`09-commit.md` 给出**清单 + 填表**。
-> **TAPD 单号自 2026-07-31 起由「强制」改为「可选」**：提交**无需** TAPD id，commit-msg 钩子对缺失脚注仅做非阻塞提示。`ENFORCE_TAPD_FOOTER=1` 可恢复强制校验。
 
-**顺序**：①（可选）询问 TAPD → ② 释放环境（团队环境管理 Skill）→ ③（可选）TAPD 状态推进 → ④ 写 `09-commit.md` commit message → ⑤ 更新 `00-overview.md`（触发**边界点 A**）→ ⑥ 一次性 `git add`（代码 + plans 产物 + 00-overview.md + docs）→ ⑦ `git commit`（首次仅一次）→ ⑧ `git push` 产生 MR → ⑨（可反复，直到 MR 合入）代码修复 amend → 合入后触发**边界点 B**。
+**顺序**：① 释放环境（团队环境管理 Skill）→ ② 写 `09-commit.md` commit message → ③ 更新 `00-overview.md`（触发**边界点 A**）→ ④ 一次性 `git add`（代码 + plans 产物 + 00-overview.md + docs）→ ⑤ `git commit`（首次仅一次）→ ⑥ `git push` 产生 MR → ⑦（可反复，直到 MR 合入）代码修复 amend → 合入后触发**边界点 B**。
 
-> **新增：禁止在边界点 A / B 之后修改 `00-overview.md` / `09-commit.md`**——步骤 ④+⑤ 完成即触发边界点 A（commit 内容定稿）；MR 合入即触发边界点 B（任务收尾）。两者之间**唯一例外**是步骤 ⑨ 代码修复走 amend——**仅改代码本身，不碰 md**；可反复不限次数，始终只有一个 commit；一旦合入就彻底冻结。完整规则见 `09-commit.md`「1. 执行顺序」节。
+> **新增：禁止在边界点 A / B 之后修改 `00-overview.md` / `09-commit.md`**——步骤 ②+③ 完成即触发边界点 A（commit 内容定稿）；MR 合入即触发边界点 B（任务收尾）。两者之间**唯一例外**是步骤 ⑦ 代码修复走 amend——**仅改代码本身，不碰 md**；可反复不限次数，始终只有一个 commit；一旦合入就彻底冻结。完整规则见 `09-commit.md`「1. 执行顺序」节。
 
-**TAPD 为可选项（AI 不再强制询问）**：进入 commit 时，若用户在团队流程中、已有 TAPD 需求单，可在 body 追加 `--<kind>=<id>` 脚注关联；**无 TAPD 时直接跳过**，无需记原因、无需创建占位单。仍想推进 TAPD 状态（团队流程时）：commit 之前调团队 TAPD Skill 把状态推到「开发中」，CR 由 push 后 MR 自动触发；TAPD 系统状态是唯一来源，不强制在 `09-commit.md` 回填。
-
-**格式**：`<type>(<scope>): <subject>`（Conventional Commits，强制）。TAPD 脚注 `--<kind>=<id>`（kind ∈ story/bug/task/test/other，纯数字 id）为**可选**；缺失时钩子仅提示不拦截。
+**格式**：`<type>(<scope>): <subject>`（Conventional Commits，强制）。
 
 **一个 MR 一个 commit（铁律）**：本任务所在 MR 只能有一个 commit。任何修正（push 前 / SOP 走完后的 follow-up / push 元信息补登）一律走 `git commit --amend` 累积到原 commit，**严禁**新增第二个 commit。amend 后 push 必须用 `git push --force-with-lease`（**禁止**裸 `--force`）。详见 `09-commit.md`「2. amend 流程」节。
 
@@ -137,7 +134,7 @@
 > 2026-07-31 重构后，项目已从「零依赖手写」转为「Vue3 + Vite + TypeScript + Pinia」标准构建流水线（见 `.harness/design.html`）。原「零构建 / 禁止框架 / bump-version.sh」约束已作废（见第四节红线 2/3）。
 
 - **Vite + Vue3 + TypeScript + Pinia + Vue Router**，依赖经 `package.json` 管理；本地开发 `npm run dev`，构建 `npm run build`（含 `vue-tsc --noEmit` 类型检查）。
-- 验证 = 构建通过 + 类型检查零错误 + `npm test`（Vitest）全绿；浏览器验证：`npm run dev` 后访问 `http://localhost:8000`。
+- 验证 = 构建通过 + 类型检查零错误 + `npm test`（Vitest）全绿；浏览器验证：`npm run dev` 后访问 `http://localhost:5173`（Vite dev server 默认端口，如需代理可另行配置）。
 - 缓存由 Vite 产物内容哈希保证（`app.<hash>.js`），**无需**手工 bump 版本脚本；`bump-version.sh` 已移除。
 - 提交前确保 `npm run build` 与 `npm test` 均通过；CI（GitHub Actions）会再次执行类型检查 + 测试 + 构建。
 

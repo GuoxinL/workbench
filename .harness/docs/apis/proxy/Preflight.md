@@ -1,7 +1,7 @@
 # Preflight（CORS 预检）
 
-> Source: `proxy/cloudflare-worker.js:33-53`
-> Last-verified: 2026-07-31（对应 commit `cf46195`，代理文件最后改动 `6427394`）
+> Source: `proxy/cloudflare-worker.js:51-72`
+> Last-verified: 2026-08-04
 
 ---
 
@@ -9,7 +9,7 @@
 
 浏览器对**带 `Authorization` 头的跨域请求**必定先发一次 `OPTIONS` 预检。本端点统一返回 `204` + CORS 响应头，声明代理允许的方法、请求头与可读响应头。
 
-> **关键行为**：预检分支位于 Origin 白名单校验**之前**（`proxy/cloudflare-worker.js:51`），因此**任何来源的 OPTIONS 都会得到 204**。来源拒绝只发生在紧随其后的真实请求上（见各端点错误码 `403`）。调试时"预检通过但正式请求 403"属预期行为，不是代理故障。
+> **关键行为**：预检分支位于 Origin 白名单校验**之前**（`proxy/cloudflare-worker.js:70-72`，真实来源拒绝在 `:74`），因此**任何来源的 OPTIONS 都会得到 204**。来源拒绝只发生在紧随其后的真实请求上（见各端点错误码 `403`）。调试时"预检通过但正式请求 403"属预期行为，不是代理故障。
 
 ---
 
@@ -32,7 +32,7 @@
 ### 示例
 
 ```http
-OPTIONS /repos/GuoxinL/workbench-data/contents/data/workbench.json HTTP/1.1
+OPTIONS /repos/GuoxinL/workbench-data/contents/kb/hello.md HTTP/1.1
 Host: xxx.your-name.workers.dev
 Origin: https://guoxinl.github.io
 Access-Control-Request-Method: PUT
@@ -50,7 +50,7 @@ Access-Control-Request-Headers: authorization,content-type
 | `Access-Control-Allow-Origin` | string | 来源在 `ALLOW_ORIGINS` 内 → 回显该 Origin；`ALLOW_ORIGINS` 为空数组 → 回显 Origin 或 `*`；来源不在白名单 → 回 `ALLOW_ORIGINS[0]`（默认 `https://guoxinl.github.io`） |
 | `Access-Control-Allow-Methods` | string | 固定 `GET,PUT,POST,DELETE,OPTIONS` |
 | `Access-Control-Allow-Headers` | string | 固定 `Authorization,Content-Type,Accept,X-GitHub-Api-Version` |
-| `Access-Control-Expose-Headers` | string | 固定 `x-oauth-scopes,x-ratelimit-remaining,etag`——前端只能读到这三个上游头 |
+| `Access-Control-Expose-Headers` | string | 固定 `x-oauth-scopes,x-ratelimit-remaining,etag`——前端只能读到这三个上游头（调用方当前仅用 `permissions.push` 判定写权限，不读 `x-oauth-scopes`，见 `api-standards.md` §3.2） |
 | `Access-Control-Max-Age` | string | 固定 `86400`（预检结果缓存 24 小时） |
 | `Vary` | string | 固定 `Origin` |
 
@@ -70,10 +70,11 @@ Vary: Origin
 
 | Code | 含义 | 处理建议 |
 |------|------|---------|
-| — | 本端点无错误分支，恒返回 `204` | 若浏览器仍报 CORS 失败，说明请求根本没到达 Worker（DNS/网络阻断），用「设置 → 诊断」的**网络连通**步定位（`js/github.js:306-316`） |
+| — | 本端点无错误分支，恒返回 `204` | 若浏览器仍报 CORS 失败，说明请求根本没到达 Worker（DNS/网络阻断），用「设置 → 诊断」的**网络连通**步定位（`diagnose.ts:83-128` 第 2 步） |
 
 ## 变更记录
 
 | 日期 | 版本 | 变更内容 | 任务 |
 |------|------|---------|------|
 | 2026-07-31 | — | 首次依据 `proxy/cloudflare-worker.js` 落档 | sop.init |
+| 2026-08-04 | — | 行号引用更新至 `proxy/cloudflare-worker.js`（corsHeaders / OPTIONS 分支）；澄清 `x-oauth-scopes` 仍放行但调用方不读取 | docs.refresh |

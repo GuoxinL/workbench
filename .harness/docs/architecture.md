@@ -1,9 +1,10 @@
 # 架构文档
 
-> 维护者：Guoxin.Liu <lgx31@sina.cn> | 最后更新：2026-07-31
+> 维护者：Guoxin.Liu <lgx31@sina.cn> | 最后更新：2026-08-04
 >
-> Source: `index.html`（脚本加载顺序 = 模块依赖顺序）、`js/*.js`、`proxy/cloudflare-worker.js`、`bump-version.sh`、`README.md`
-> Last-verified: 2026-07-31（对应 commit `cf46195`）
+> Source：当前代码库（Vue3 + Vite + TypeScript + Pinia 标准构建流水线，2026-07-31 重构后）。
+> 本文件优先以**磁盘上真实代码**为准；若与 AGENTS.md 冲突，以本文件描述的代码结构为准、以 AGENTS.md 的红线/SOP 为准。
+> 上一次整体对齐：2026-07-31（重构评审批准引入 Vite + Vue3 + Pinia，原「零构建原生 JS」架构已作废）。
 
 本文件面向人和 AI，描述系统结构、关键决策与已知技术债。AI 协作入口见 [AGENTS.md](../../AGENTS.md)。
 
@@ -11,21 +12,20 @@
 
 ## 1. 系统定位
 
-一个**零后端的个人工作台 Web 应用**：待办卡片 + 双向链接笔记（`[[标题]]` 语法）+ 笔记关联图谱，数据以**单个 JSON 文件**存放在使用者自己的 GitHub 私有仓库中，多设备读写同一文件实现跨端同步。托管在 GitHub Pages，手机「添加到主屏幕」即可当 App 用。服务对象是**单个使用者本人**（自用工具，非多租户产品）。
+一个**纯客户端单体（Client-only Monolith）个人工作台 Web 应用**：待办卡片 + 双向链接笔记（`[[标题]]` 语法）+ 文章内关系图谱，数据以**结构化文档**存放在使用者自己的 GitHub 仓库中，多设备经 GitHub Contents API 读写同一份数据实现跨端同步。托管在 GitHub Pages，手机「添加到主屏幕」即可当 App 用。服务对象是**单个使用者本人**（自用工具，非多租户产品）。
 
-**架构模式**：**纯客户端单体（Client-only Monolith）**
+**架构模式**：**纯客户端单体 + 可选边缘代理**
 
 判定证据：
 
 | 证据 | 事实 |
 |------|------|
-| 无服务端入口 | 全仓库无 `main.go` / `server.js` / `app.py`；唯一 HTML 入口 `index.html` |
-| 无构建产物 | 无 `package.json` / `node_modules` / 打包器配置，`index.html:269-276` 直接 `<script src>` 引入源文件 |
-| 无模块系统 | 8 个 JS 文件均为 IIFE 挂载到全局 `window.WB`（`js/util.js:4` 建根命名空间），**不是 ES Module**，加载顺序即依赖顺序 |
-| 唯一"后端" | `proxy/cloudflare-worker.js`（106 行）仅为**可选**的 GitHub API 白名单透传代理，不含任何业务逻辑、不存储任何数据 |
-| 持久化 | 浏览器 `localStorage` + GitHub Contents API 单文件读写，无数据库 |
+| 无服务端业务逻辑 | 全仓库无 `server.js` / `main.go`；唯一「后端」是可选 Cloudflare Worker 代理（`proxy/cloudflare-worker.js`），只做 GitHub API 白名单透传，不含业务逻辑、不存储数据 |
+| 标准构建流水线 | 有 `package.json` / `node_modules` / `vite.config.ts`；`npm run build` = `vue-tsc --noEmit && vite build`，产物为 `dist/`（带内容 hash 的 `assets/index-*.js`） |
+| 模块化 | ES Module + Vue SFC；`src/` 下按 `stores / services / views / components / lib / composables / router` 分层（详见 §3） |
+| 持久化 | 浏览器 **localStorage（`wb.data.v1` 即时加载层）+ IndexedDB（结构化存储层 `services/db`）** 双重本地存储；远端经 GitHub Contents API 同步到 `kb/<id>.md` + `manifest.json` |
 
-代码规模（`wc -l`，3185 行）：`index.html` 278 / `css/style.css` 466 / `js/notes.js` 483 / `js/github.js` 375 / `js/store.js` 361 / `js/app.js` 292 / `js/todos.js` 286 / `js/markdown.js` 203 / `js/graph.js` 202 / `js/util.js` 133 / `proxy/cloudflare-worker.js` 106。
+代码规模（`.harness/docs/`、`scripts/`、`proxy/` 之外的应用代码，约 60+ 个 `.ts`/`.vue` 文件）：入口 `src/main.ts`、`src/App.vue`；状态层 `src/stores/data.ts`；服务层 `src/services/**`；视图 `src/views/*`；组件 `src/components/**`；纯函数库 `src/lib/**`；组合式 `src/composables/**`。
 
 ---
 
@@ -34,17 +34,19 @@
 ```mermaid
 flowchart LR
     User["使用者<br/>（桌面 / 移动浏览器）"]
-    App["个人工作台<br/>静态前端（index.html + js/*）"]
-    LS[("localStorage<br/>wb.data.v1 / wb.cfg.v1<br/>wb.device.v1 / wb.dirty")]
+    App["个人工作台<br/>Vue3 SPA（dist/ 静态产物）"]
+    LS[("localStorage<br/>wb.data.v1 / wb.cfg.v1<br/>wb.manifestSha.v1")]
+    IDB[("IndexedDB<br/>services/db 结构化存储<br/>+ 图片 store")]
     Pages["GitHub Pages<br/>GuoxinL/workbench（公开）"]
     Worker["Cloudflare Worker<br/>proxy/cloudflare-worker.js（可选自部署）"]
     GH["GitHub Contents API<br/>api.github.com"]
-    DataRepo[("数据仓库<br/>GuoxinL/workbench-data（私有）<br/>data/workbench.json")]
+    DataRepo[("数据仓库<br/>GuoxinL/workbench-data（私有）<br/>kb/&lt;id&gt;.md + manifest.json")]
 
     User -->|"HTTPS 加载静态资源"| Pages
     Pages -->|"交付 HTML/JS/CSS"| App
     User -->|"DOM 事件：新建/编辑/删除"| App
     App <-->|"读写（同步）"| LS
+    App <-->|"读写（异步）"| IDB
     App -->|"REST + Bearer PAT<br/>（apiBase 留空时直连）"| GH
     App -.->|"REST + Bearer PAT<br/>（配置了 API 代理地址时）"| Worker
     Worker -->|"白名单透传"| GH
@@ -54,240 +56,261 @@ flowchart LR
 | 外部系统/角色 | 交互方式 | 数据方向 | 说明 |
 |-------------|---------|---------|------|
 | 使用者 | 浏览器 DOM 事件 | 双向 | 唯一角色，无多用户/无管理员概念（自用工具） |
-| GitHub Pages | HTTPS 静态托管 | 出（交付代码） | 部署**代码仓库** `GuoxinL/workbench`，必须公开；根目录 `.nojekyll` 关闭 Jekyll |
-| GitHub Contents API | HTTPS REST，`Authorization: Bearer <PAT>` | 双向 | `GET /repos/{owner}/{repo}/contents/{path}?ref={branch}` 拉取、`PUT` 同路径推送（`js/github.js:48-52`） |
-| 数据仓库 `workbench-data` | 经 Contents API 间接访问 | 双向 | 单文件 `data/workbench.json`；**必须私有**（README.md:59-60）；每次同步产生一次 commit |
+| GitHub Pages | HTTPS 静态托管 | 出（交付代码） | 部署**代码仓库** `GuoxinL/workbench`，必须公开；构建产物 `dist/` 经 GitHub Actions 上传，`.nojekyll` 关闭 Jekyll |
+| GitHub Contents API | HTTPS REST，`Authorization: Bearer <PAT>` | 双向 | `GET /repos/{owner}/{repo}/contents/manifest.json?ref={branch}` 拉轻量索引；`GET/PUT /repos/{owner}/{repo}/contents/kb/{id}.md` 按 id 差分读写正文；`PUT .../images/{hash}.{ext}` 推送图片（图云同步模式） |
+| 数据仓库 `workbench-data` | 经 Contents API 间接访问 | 双向 | 文章正文 `kb/<id>.md`（带 frontmatter）+ 轻量索引 `manifest.json`；**必须私有**；每次推送产生一次 commit |
 | Cloudflare Worker 代理 | HTTPS REST | 双向（透传） | **可选**，仅在使用者网络访问不了 `api.github.com` 时启用；由使用者自行部署到自己账号 |
-| localStorage | 同步 API | 双向 | 本地唯一持久化，兼作离线缓存与「本地模式」的完整存储 |
+| localStorage | 同步 API | 双向 | `wb.data.v1` 即时加载层（零配置启动契约）；`wb.cfg.v1` 配置（含令牌）；`wb.manifestSha.v1` manifest 乐观锁 sha |
+| IndexedDB | 异步 API | 双向 | `services/db` 结构化存储（单实体 + 分页索引）+ 图片 store（图云极简模式） |
+
+> ⚠️ **与旧架构的关键差异**：早期版本把整份数据塞进单一 `data/workbench.json` 并靠 `bump-version.sh` 刷新 `?v=` 参数破缓存。现重构为：**远端按文章拆分成 `kb/<id>.md` + 轻量 `manifest.json` 索引**；**缓存由 Vite 产物内容 hash 保证**，已无 `bump-version.sh`。本文件与 AGENTS.md 概述段若仍出现 `data/workbench.json` / `bump-version.sh` 字样，一律以本段为准。
 
 ---
 
-## 3. 服务/容器拓扑
-
-本项目**只有一个可独立部署单元**（静态站点），外加一个可选的代理 Worker。下图展示的是**浏览器内的运行时模块拓扑**（等价于本项目的"服务拓扑"）：
+## 3. 模块分层（改代码前先认清入口）
 
 ```mermaid
 graph TD
-    subgraph Browser["浏览器运行时（window.WB 全局命名空间）"]
+    subgraph Browser["浏览器运行时"]
         subgraph L4["入口 / 编排层"]
-            APP["app.js<br/>boot / 视图路由 / 同步状态 / 设置面板"]
+            MAIN["main.ts<br/>createApp + Pinia + Router + auto-import"]
+            APP["App.vue<br/>顶栏(品牌/导航/SyncChip/⚙) + router-view"]
+            ROUTER["router/index.ts<br/>/todos /articles/:id? /share/:id"]
         end
-        subgraph L3["视图层"]
-            TODOS["todos.js<br/>待办卡片"]
-            NOTES["notes.js<br/>笔记编辑 + 双链"]
-            GRAPH["graph.js<br/>力导向图谱"]
+        subgraph L3["视图层 views/"]
+            TODOSV["TodosView.vue"]
+            ARTICLESV["ArticlesView.vue<br/>(ArticleGrid + TagCloud + 编辑器)"]
+            SHAREV["ShareView.vue<br/>只读分享渲染"]
         end
-        subgraph L2["领域 / 渲染层"]
-            STORE["store.js<br/>唯一数据层 + LWW 合并"]
-            GHSYNC["github.js<br/>唯一远端同步通道"]
-            MD["markdown.js<br/>Markdown + 双链解析"]
+        subgraph L2c["组件层 components/"]
+            TODO_C["todos/*（TodoCard/Composer/Filters/EditSheet/ColorSelect）"]
+            KB_C["kb/*（ArticleGrid/ArticleEditor/MilkdownEditor/TagCloud/LinksPanel/ImageDialog/...）"]
+            COMMON["common/*（SyncChip/SettingsSheet/DialogHost/Pagination）"]
         end
-        subgraph L1["基础层"]
-            UTIL["util.js<br/>DOM / 时间 / Base64 / esc / toast"]
+        subgraph L2s["服务层 services/"]
+            STORE["stores/data.ts<br/>Pinia 数据层 + 同步适配器"]
+            STORAGE["storage/storageLayer.ts<br/>本地优先双写唯一入口"]
+            DB["db/*（IndexedDB 数据层 + 图片 store）"]
+            GH["github/*（client/contents/manifest/diagnose/repoFile）"]
+            SYNC["sync/*（engine/merge/serialize）"]
+            IMG["image/*（cloud/localCloud/gitCloud/hash）"]
+        end
+        subgraph L1["纯函数库 lib/"]
+            MD["lib/markdown/*（render/wikilink/paste-image/resolve-image-plugin/...）"]
+            LINKS["lib/links.ts / slug.ts / colors.ts / datetime.ts / html.ts / image.ts"]
+        end
+        subgraph COMP["组合式 composables/"]
+            USE["useAutoSave / useDialog / useTheme"]
         end
         LS[("localStorage")]
+        IDB[("IndexedDB")]
     end
 
     Worker["Cloudflare Worker（可选）"]
     GHAPI["api.github.com<br/>Contents API"]
 
-    APP --> TODOS
-    APP --> NOTES
-    APP --> GRAPH
-    APP --> STORE
-    APP --> GHSYNC
-    TODOS --> STORE
-    NOTES --> STORE
-    NOTES --> MD
-    GRAPH --> NOTES
-    GRAPH --> STORE
-    GHSYNC --> STORE
-    STORE --> UTIL
-    GHSYNC --> UTIL
-    MD --> UTIL
-    TODOS --> UTIL
-    NOTES --> UTIL
-    GRAPH --> UTIL
-    STORE -->|"读写 wb.* 键"| LS
-    GHSYNC -->|"HTTPS REST + Bearer"| GHAPI
-    GHSYNC -.->|"HTTPS REST（apiBase 非空时）"| Worker
-    Worker -->|"白名单透传"| GHAPI
+    MAIN --> APP --> ROUTER
+    ROUTER --> TODOSV & ARTICLESV & SHAREV
+    TODOSV --> TODO_C
+    ARTICLESV --> KB_C
+    TODO_C --> STORE
+    KB_C --> STORE & MD
+    STORE --> STORAGE
+    STORAGE --> DB & SYNC
+    SYNC --> GH
+    STORAGE --> IMG
+    IMG --> DB & GH
+    MD --> HTML[("DOMPurify 转义")]
+    GH --> GHAPI
+    GH -.-> Worker
+    STORAGE -->|"读写 wb.* 键"| LS
+    DB --> IDB
 ```
 
-| 服务/模块 | 代码位置 | 职责 | 通信方式 | 数据所有权 |
-|----------|---------|------|---------|-----------|
-| 静态站点 | 仓库根目录 | 唯一可部署单元，GitHub Pages 托管 | HTTPS 静态交付 | 无（无状态外壳） |
-| `WB.util` | `js/util.js` | ID 生成、时间格式化、DOM 构造 `el()`、HTML 转义 `esc()`、UTF-8 安全 Base64、`debounce`、toast | 纯函数，被全体依赖 | 无 |
-| `WB.store` | `js/store.js` | **唯一数据层**：todo/note CRUD、软删除墓碑、逐条 LWW 合并、序列化、事件广播 | 事件总线 `on/emit` | 拥有 `wb.data.v1`、`wb.cfg.v1`、`wb.device.v1`、`wb.dirty` 全部 localStorage 键 |
-| `WB.gh` | `js/github.js` | **唯一远端通道**：拉取/合并/推送、sha 乐观锁、冲突重试、轮询、五步诊断 | HTTPS REST → Contents API | 拥有 `data/workbench.json` 的读写权 |
-| `WB.md` | `js/markdown.js` | 手写 Markdown 渲染器 + `[[双链]]` 提取与上下文摘录 | 纯函数 | 无 |
-| `WB.todos` | `js/todos.js` | 待办卡片列表、筛选/搜索、编辑抽屉、转笔记 | 调 `WB.store` | 无（视图态：`filterStatus`/`filterColor`/`keyword`/`editingId`） |
-| `WB.notes` | `js/notes.js` | 笔记列表/详情、Markdown 实时预览、`[[` 自动补全、反链面板、改标题联动改引用 | 调 `WB.store` / `WB.md` | 无（视图态：`currentId`/`mode`/`suppressRender`） |
-| `WB.graph` | `js/graph.js` | 零依赖力导向布局，SVG 渲染，拖拽/缩放/点击跳转 | 调 `WB.notes.buildGraph()` | 无（布局态：`nodes`/`edges`/`view`） |
-| `WB.app` | `js/app.js` | 启动编排 `boot()`、视图路由、同步状态渲染、设置面板、示例数据播种 | 订阅 `store` 的 `change`/`sync` 事件 | 无（`wb.view`、`wb.seeded` 两个 UI 态键由本模块直写，见 §12） |
-| 代理 Worker | `proxy/cloudflare-worker.js` | 路径白名单 + Origin 白名单 + CORS 头，透传到 `api.github.com` | HTTPS 反向代理 | **无状态、无存储、不记录令牌**（代码注释 `proxy/cloudflare-worker.js:72`） |
-
----
-
-## 4. 核心模块内部结构
+### 3.1 目录结构与职责
 
 ```
 workbench/
-├── index.html              ← 唯一页面：三视图（待办/笔记/图谱）+ 两个抽屉 + script 加载顺序
-├── manifest.json           ← PWA 清单（仅「添加到主屏幕」，无 Service Worker，见 §12）
-├── icon.svg / .nojekyll    ← 图标 / 关闭 GitHub Pages 的 Jekyll 处理
-├── bump-version.sh         ← 发版脚本：刷新 index.html 中所有 ?v= 与 wb-version meta
-├── css/style.css           ← 全部样式（含移动端适配，无预处理器）
-├── js/
-│   ├── util.js             ← L1 基础层：无任何内部依赖，建立 window.WB
-│   ├── store.js            ← L2 数据层：localStorage 唯一出入口 + 合并算法
-│   ├── github.js           ← L2 同步层：GitHub API 唯一出入口
-│   ├── markdown.js         ← L2 渲染层：Markdown + 双链解析（纯函数）
-│   ├── todos.js            ← L3 视图层
-│   ├── notes.js            ← L3 视图层
-│   ├── graph.js            ← L3 视图层
-│   └── app.js              ← L4 入口层：启动编排与跨视图路由
-├── proxy/cloudflare-worker.js  ← 可选 GitHub API 中转
+├── index.html              ← Vite 入口（含 <div id="app">）
+├── vite.config.ts          ← 构建 + Vitest 配置（base:'./'、alias @、auto-import）
+├── package.json            ← scripts: dev / build / preview / test / test:watch / type-check
+├── tsconfig*.json         ← TS 严格模式 + vue-tsc
+├── src/
+│   ├── main.ts             ← 应用引导：挂载 Pinia、Router、Element Plus
+│   ├── App.vue             ← 应用外壳：顶栏（品牌 / 导航 / SyncChip / ⚙ 设置）/ router-view
+│   ├── router/index.ts     ← 路由表（hash 模式）：/todos · /articles/:id? · /share/:id
+│   ├── types/index.ts      ← 全局类型（Todo / Article / Config / Manifest / SyncPhase ...）
+│   ├── stores/
+│   │   └── data.ts         ← ★ 唯一 Pinia 数据层：内存快照 + 迁移 + 图云层接入 + 同步适配器
+│   ├── services/
+│   │   ├── db/             ← IndexedDB 数据层（indexeddb / schema / types），含图片 store
+│   │   ├── storage/
+│   │   │   └── storageLayer.ts   ← ★ 本地优先双写唯一入口（local-first：先写 IDB 再触发同步）
+│   │   ├── github/         ← ★ 唯一远端同步通道（client / contents / manifest / diagnose / repoFile）
+│   │   ├── sync/           ← ★ 同步引擎（engine / merge / serialize）：守卫 / 差分 / LWW / 冲突重试
+│   │   └── image/          ← 图云层（cloud / localCloud / gitCloud / hash / index）：极简↔同步路由
+│   ├── lib/
+│   │   ├── markdown/       ← Markdown 渲染、双链解析、paste-image、resolve-image-plugin、frontmatter、excerpt、scan-wikilinks、serialize
+│   │   ├── links.ts / slug.ts / colors.ts / datetime.ts / html.ts / image.ts
+│   ├── composables/        ← useAutoSave / useDialog / useTheme
+│   ├── views/              ← TodosView / ArticlesView / ShareView
+│   ├── components/
+│   │   ├── common/         ← SyncChip / SettingsSheet / DialogHost / Pagination
+│   │   ├── todos/          ← TodoCard / TodoComposer / TodoFilters / TodoEditSheet / ColorSelect
+│   │   └── kb/             ← ArticleGrid / ArticleEditor / MilkdownEditor / TagCloud / LinksPanel / ImageDialog / LinkDialog / WikiAutocomplete / ...
+│   └── test/setup.ts       ← Vitest 全局 setup（fake-indexeddb + Pinia 激活）
+├── proxy/cloudflare-worker.js  ← 可选 GitHub API 中转（路径 + 来源白名单）
+├── .github/workflows/deploy.yml ← GitHub Actions 部署（push main → build → 上传 dist → Pages）
 └── scripts/                ← 本地 git 钩子实现（pre-commit / commit-msg / pre-push）
 ```
 
-**模块间依赖规则**（由 `index.html:269-276` 的 `<script>` 顺序强制，无模块系统兜底）：
+### 3.2 分层依赖规则
 
-1. 加载顺序固定为 `util → store → github → markdown → todos → notes → graph → app`，**顺序即依赖顺序，不可调换**。每个文件顶部以 `const U = WB.util, S = WB.store` 形式在 IIFE 执行时立即捕获引用，前置模块未加载会直接 `undefined` 崩溃。
-2. **单向分层**：L1 ← L2 ← L3 ← L4。低层禁止引用高层。
-3. **两处受控的反向引用**（运行时惰性调用，非加载期捕获，因此不构成循环依赖）：
-   - 视图层通过 `WB.app.openNote(id)` 做跨视图跳转（`js/todos.js:194`、`js/notes.js` 经列表点击、`js/graph.js:196`）；
-   - `app.js` 通过 `WB.notes.flush()` 在同步/离开前强制落盘编辑器内容（`js/app.js:49`、`js/app.js:97`）。
-4. **graph → notes 复用**：`js/graph.js:43` 直接调 `WB.notes.buildGraph()`，双链图构建逻辑只有一份（`js/notes.js:80`）。
-5. **数据流单向广播**：任何写操作 → `store.commit()`（`js/store.js:143`）→ `emit('change')` → `app.js:27` 统一 `renderAll()` + 触发防抖推送。视图层**不互相调用渲染**。
+1. **单向分层**：`L4 → L3 → L2 → L1`，低层禁止引用高层。`stores/data.ts` 经 `services/storage` 收口写操作，视图/组件只调 `store` 与 `lib`，不直接碰 `wb.*` 或 GitHub API（红线 4）。
+2. **唯一写入口**：所有实体变更（Todo / Article）的持久化与同步触发收敛到 `storageLayer.ts`（见 §5）。组件不得自行 `localStorage.setItem('wb.data.v1', …)` 或直连 Contents API。
+3. **纯函数库 `lib/` 无副作用**：Markdown / 双链 / slug 等只做转换，便于 Vitest 单测。
+4. **同步引擎是唯一远端通道**：`services/sync` 调度 `services/github/contents`，视图层只通过 store 的 `schedulePush()` 间接触发。
+
+---
+
+## 4. 核心数据结构
+
+- **`Config`（`src/types`）**：`{ enabled, repo, branch, token, poll, apiBase, publicRepo? }`。仅存 localStorage `wb.cfg.v1`，**永不写入远端数据、永不打日志、永不硬编码**（红线 5）。
+- **`WorkbenchData` / 内存快照（`stores/data.ts`）**：`{ version:1, todos:[], articles:[], updatedAt }`，对应 `wb.data.v1`。
+- **`Todo`**：`{ id, title, desc?, color, status('todo'|'doing'|'done'), due?, articleId?, time, createdAt, updatedAt, deleted }`（软删墓碑）。
+- **`Article`**：`{ id, title, content(Markdown), tags:[], fromTodo?, createdAt, updatedAt, deleted }`；远端 `kb/<id>.md` 以 frontmatter 承载 `title/tags/...`，正文为 Markdown。
+- **`Manifest`**：轻量索引 `{ articles: {id:{updatedAt,sha}}, todos?: {id:{updatedAt,sha}}, updatedAt }`，对应远端 `manifest.json`；`wb.manifestSha.v1` 存其乐观锁 sha。
+- **图云键**：
+  - 极简模式（IndexCloudLayer via IndexedDB）：`local-img:<sha>`，`resolve` 时转 object URL；
+  - 同步模式（gitCloud）：`images/<hash>.<ext>`，`resolve` 时由调用方按 `config` 拼 `raw.githubusercontent.com` 直链（见 `ShareView`、`lib/markdown` 的 `resolveImage` 约定）。
+- **双链图**：运行时由 `lib/links.ts` + `lib/markdown/scan-wikilinks.ts` 扫全部文章正文 `[[标题]]` 现算（按 slug 匹配），不落盘；文章内 `LinksPanel` 组件渲染关系图（SVG）。
 
 ---
 
 ## 5. 数据流（核心链路）
 
-> 追踪场景：**使用者在输入框敲下一条待办并回车，直到内容落进 GitHub 仓库的 `data/workbench.json`**。
+> 追踪场景：**使用者在编辑器敲下内容并保存，直到它落进 GitHub 数据仓库的 `kb/<id>.md` 并经 `manifest.json` 索引**。
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant U as 使用者
-    participant T as todos.js
-    participant S as store.js
-    participant LS as localStorage
-    participant A as app.js
-    participant G as github.js
+    participant V as 视图/组件
+    participant S as stores/data.ts
+    participant SL as storageLayer
+    participant DB as IndexedDB(services/db)
+    participant SE as sync/engine
+    participant GH as github/contents
     participant API as GitHub Contents API
     participant R as workbench-data 仓库
 
-    U->>T: 输入标题 + 回车 / 点「添加」
-    Note over T: todos.js:26-28 keydown / todos.js:25 click
-    T->>T: addFromComposer() todos.js:119
-    T->>S: addTodo({title,color,status}) todos.js:123
-    S->>S: normTodo() 补 id/时间戳/deleted store.js:113
-    S->>S: data.todos.unshift() store.js:173
-    S->>S: commit('todo:add') store.js:143<br/>data.updatedAt=now, dirty=true
-    S->>LS: setItem('wb.data.v1', JSON) + 'wb.dirty'='1' store.js:87-94
-    S-->>A: emit('change') + emit('dirty') store.js:148-149
-    A->>T: renderAll() → todos.render() app.js:28,88
-    A->>G: WB.gh.schedulePush() app.js:29
-    Note over G: debounce 1500ms github.js:237
-
-    G->>G: sync({silent:true}) → 并发排队 github.js:220-232
-    G->>G: runSync() setState('syncing') github.js:151-153
-    loop 最多 3 次（冲突重试）
-        G->>API: GET /repos/{owner}/{repo}/contents/{path}?ref={branch}<br/>Bearer PAT, cache:no-store  github.js:106-109
-        API->>R: 读取 data/workbench.json
-        R-->>API: base64 content + sha
-        API-->>G: 200 { content, sha } / 404（首次未创建）
-        G->>G: b64Decode + JSON.parse util.js:96 / github.js:117
-        G->>S: mergeInto(remote) 逐条 LWW store.js:265-294
-        S-->>A: emit('change','merge')（若有变更）store.js:291
-        G->>S: diffFromRemote() 判断是否需推 store.js:297
-        alt 无需推送（两端一致且 !dirty）
-            G->>S: setDirty(false) → setState('ok') github.js:174-181
-        else 需要推送
-            G->>S: serialize()（清理 30 天前墓碑）store.js:312-321
-            G->>API: PUT contents { message, content:b64, branch, sha } github.js:125-137
+    U->>V: 编辑并保存（或粘贴图片）
+    V->>S: mutator（如 saveArticle）
+    S->>SL: storage.SaveArticle(a)（本地优先双写）
+    SL->>DB: 立即写本地 DataLayer（毫秒级、离线可用）
+    SL->>SE: schedulePush()（防抖、异步）
+    Note over SE: 仅触发，不阻塞本地写入
+    SE->>SE: doSync() —— 先判 isEnabled()/isConfigComplete()
+    alt 未启用或配置不完整
+        SE-->>S: setPhase('off')（本地模式，绝不发请求、绝不报「同步失败」）
+    else 配置完整
+        SE->>GH: fetchManifest(branch) —— 一次轻量 GET
+        GH->>API: GET contents/manifest.json
+        API->>R: 读 manifest
+        R-->>API: { 索引, sha }
+        SE->>SE: planDiff(local, manifest) 按 id 算 pull/push
+        SE->>GH: fetchArticles(pull) 仅差分拉取正文
+        SE->>SE: mergeArticles(local, pulled)（LWW，逐条 updatedAt 取新）
+        SE->>DB: applyRemote() 写回本地
+        alt 本地无领先变更（aPlan.push 空）
+            SE-->>S: setPhase('ok')；不写远端（避免空 commit）
+        else 需推送
+            SE->>GH: pushRemote(用刚拉到的远端 manifest.sha 作乐观锁)
+            GH->>API: PUT kb/<id>.md + PUT manifest.json
             API->>R: 创建 commit
-            alt 409 / 422 冲突（远端已被别端改）
-                API-->>G: 冲突 → github.js:139-143
-                G->>G: 退避 350ms×attempt 后重新拉取 github.js:194
+            alt 409 / conflictSlug（远端已被改）
+                SE->>SE: 退避重试（上限 MAX_RETRY）
             else 成功
-                R-->>API: 新 sha
-                API-->>G: 200 { content.sha }
-                G->>S: setDirty(false) + setState('ok') github.js:187-189
-                S-->>A: emit('sync') → paintSync() 顶栏绿点 app.js:31,102
+                SE-->>S: setPhase('ok') + 回写 manifestSha
             end
         end
     end
 ```
 
-**同步的另外三条触发路径**（均汇入同一个 `sync()` 入口）：
+**同步的其它触发路径**（均汇入 `engine.sync()`，含并发排队）：
 
-| 触发源 | 代码位置 | 说明 |
-|--------|---------|------|
-| 定时轮询 | `js/github.js:240-249` | 默认 20s（可配 5–300s），`document.hidden` 时跳过 |
-| 回到前台 / 网络恢复 | `js/app.js:44-47` | `visibilitychange` + `online` 事件，立即静默同步 |
-| 手动点顶栏同步胶囊 | `js/app.js:95-99` | 先 `WB.notes.flush()` 落盘，再非静默同步并 toast |
+| 触发源 | 位置 | 说明 |
+|--------|------|------|
+| 防抖调度 | `engine.schedulePush()` | 写操作后防抖触发（`storageLayer` 调用） |
+| 定时轮询 | `engine` 内 `setInterval`（间隔 `cfg.poll`，默认 5s，钳制 5–300s） | `document.hidden` 时跳过 |
+| 回到前台 / 网络恢复 | store 订阅 `visibilitychange` + `online` | 立即静默同步 |
+| 手动点顶栏同步胶囊 | `SyncChip` | 非静默同步 + toast |
 
-**关键数据结构**：
+**并发排队**：`sync()` 复用进行中的 `inFlight` Promise，而非「忙就 return false」——避免把「正忙」误判成「失败」（见 §10 决策）。
 
-- **`data`（根文档，`js/store.js:48`）**：`{ version:1, todos:[], notes:[], updatedAt:number }`，即 `data/workbench.json` 的完整形态。
-- **`todo`（`js/store.js:113-126`）**：`{ id, title, desc, color(8色枚举), status('todo'|'doing'|'done'), due, noteId, createdAt, updatedAt, deleted }`。
-- **`note`（`js/store.js:128-138`）**：`{ id, title, content(Markdown), fromTodo, createdAt, updatedAt, deleted }`。
-- **`cfg`（`js/store.js:31-39`，仅存本地，永不上传）**：`{ enabled, repo, branch, path, token, poll, apiBase }`。
-- **双链图（`js/notes.js:80-100`，运行时计算不落盘）**：`{ outMap, inMap, missing, byTitle, notes }`，由 `MD.extractLinks()` 扫全部笔记正文的 `[[标题]]` 现算，标题匹配走 `util.slug()`（trim + 小写 + 空白折叠）。
-
-**合并语义（`js/store.js:265-294`）**：以记录 `id` 为主键，远端存在而本地没有 → 直接插入；两端都有 → 比较 `updatedAt`，**远端更新才覆盖本地**（逐条 last-write-wins）。合并粒度是**单条记录**而非整文件，因此两端同时编辑*不同*条目不会互相丢数据；同时编辑*同一*条目则较早的写入被丢弃——这是无后端方案的固有取舍（README.md:138）。删除走**软删除墓碑**（`deleted:true` + 刷新 `updatedAt`），保证删除动作能传播到其它设备，序列化时清理 30 天前的墓碑控制文件体积。
+**合并语义**：以 `id` 为主键，远端存在本地没有 → 插入；两端都有 → 比较 `updatedAt`，**远端更新才覆盖本地**（逐条 LWW，`sync/merge.ts`）。删除走**软删除墓碑**（`deleted:true` + 刷新 `updatedAt`），保证删除动作能传播到其它设备；`sync/serialize.ts` 的 `cleanupTombstones` 清理过期墓碑控制体积。
 
 ---
 
 ## 6. 服务通信
 
-本项目**无服务间通信**（只有一个部署单元）。下表记录的是**浏览器 → 外部 HTTP 接口**与**模块间事件**两类通信。
+本项目**无服务间通信**（只有一个部署单元 + 可选代理 Worker）。下表记录**浏览器 → 外部 HTTP** 与**模块间调用**两类。
 
-### 6.1 对外 HTTP 调用
+### 6.1 对外 HTTP 调用（GitHub Contents API）
 
-| 调用方 | 被调用方 | 协议 | 同步/异步 | 关键接口 |
-|--------|---------|------|----------|---------|
-| `js/github.js:106` `fetchRemote` | GitHub Contents API | HTTPS REST | 同步（await） | `GET /repos/{owner}/{repo}/contents/{path}?ref={branch}&t={ts}` |
-| `js/github.js:125` `pushRemote` | GitHub Contents API | HTTPS REST | 同步（await） | `PUT /repos/{owner}/{repo}/contents/{path}`，body 含 `sha` 做乐观锁 |
-| `js/github.js:261` `test` | GitHub Repos API | HTTPS REST | 同步 | `GET /repos/{owner}/{repo}`，校验 `permissions.push` |
-| `js/github.js:321` `diagnose` | GitHub Rate Limit API | HTTPS REST | 同步 | `GET /rate_limit`，读 `x-oauth-scopes` 判定令牌范围 |
-| `js/github.js:307` `diagnose` | API 根 | HTTPS | 同步 | `GET /`，纯连通性探测（不带 token） |
-| Worker（可选） | `api.github.com` | HTTPS | 同步 | 白名单：`/rate_limit`、`/repos/{o}/{r}`、`/repos/{o}/{r}/contents/**`、`/`（`proxy/cloudflare-worker.js:20-25`） |
+| 调用方 | 被调用方 | 关键接口 |
+|--------|---------|---------|
+| `github/contents.fetchManifest` | Contents API | `GET /repos/{o}/{r}/contents/manifest.json?ref={branch}` |
+| `github/contents.fetchArticles/fetchTodos` | Contents API | `GET /repos/{o}/{r}/contents/kb/{id}.md`（按差分 id 列表） |
+| `github/contents.pushRemote` | Contents API | `PUT .../kb/{id}.md` + `PUT .../manifest.json`（带 sha 乐观锁） |
+| `github/contents.pushImage` | Contents API | `PUT /repos/{o}/{r}/contents/images/{hash}.{ext}`（图云同步模式，返回 `images/<hash>.<ext>` 键） |
+| `github/diagnose.testConnection` | Repos API | `GET /repos/{o}/{r}` 校验 `permissions.push`；超时 12s |
+| `github/diagnose.runDiagnose` | 多步 | 配置检查 → 网络连通 → 令牌有效性 → 仓库写权限 → 数据文件（+ 可选公开库） |
+| Worker（可选） | `api.github.com` | 白名单：`/rate_limit`、`/repos/{o}/{r}`、`/repos/{o}/{r}/contents/**`、`/`（见 `proxy/cloudflare-worker.js`） |
 
-**通信约定**：
+**通信约定**（对齐 `github/diagnose.ts` 与 `contents.ts`）：
 
-- 所有请求经统一封装 `req()`（`js/github.js:67-91`）：默认 **12s 超时**（`AbortController`），诊断步骤缩短为 10s。
-- 固定请求头：`Authorization: Bearer <token>`、`Accept: application/vnd.github+json`、`X-GitHub-Api-Version: 2022-11-28`（`js/github.js:54-60`）。
-- 请求根地址由 `API_BASE()`（`js/github.js:14-18`）决定：`cfg.apiBase` 非空则走代理，否则 `https://api.github.com`。
-- 网络类错误统一中文化并标记 `err.net = true`；判定用 `e.name === 'TypeError'` 而非 `instanceof`，因 fetch 可能来自其它 realm（`js/github.js:80-81` 注释）。
-- HTTP 状态码语义映射集中在 `readErr()`（`js/github.js:93-103`）：401→令牌失效、403+rate limit→频率超限、404→仓库/分支/权限问题。
-- 无 traceID / 无请求链路标识（无后端，不适用）。
+- 统一封装带 **12s 超时**（`AbortController`）；代理地址非空时走 `cfg.apiBase`，否则 `https://api.github.com`。
+- 固定头：`Authorization: Bearer <token>`、`Accept: application/vnd.github+json`。
+- 配置**不完整**（`isConfigComplete` 为假）时，`testConnection` 直接返回 `{ok:false, code:'config', message:'配置不完整：请填写 owner/repo（格式 owner/repo）、分支与令牌'}`，**不发起任何网络请求、不报「同步失败」**（回归红线，见 §9 / verification.md §7）。
+- HTTP 状态语义映射：401→令牌失效、403/429→频率超限、404→仓库/分支/权限问题；网络错误区分「代理不可达 / CORS」与「直连不可达」给出可操作提示。
+- 无 traceID（无后端，不适用）。
 
-### 6.2 模块间事件（store 事件总线，`js/store.js:53-60`）
+### 6.2 模块间关键调用
 
-| 事件 | 发布方 | 订阅方 | 语义 |
-|------|--------|--------|------|
-| `change` | `store.commit()` / `store.mergeInto()` / `store.replaceAll()` | `app.js:27` | 数据已变更，触发全量重渲染 + 防抖推送 |
-| `dirty` | `store.commit()` / `store.setDirty()` | 当前无独立订阅方（状态经 `sync` 事件间接体现，见 `app.js:110`） | 本地存在未推送变更 |
-| `sync` | `github.setState()` | `app.js:31` `paintSync` | 同步状态机流转：`idle/syncing/ok/error/off` |
-| `cfg` | `store.saveCfg()` | 当前无订阅方（`app.js:175` 直接命令式调 `restartPoll()`） | 配置已更新 |
+| 调用 | 说明 |
+|------|------|
+| 视图/组件 → `stores/data.ts` | 经 Pinia `useDataStore()` 读状态、调 mutator |
+| `stores/data.ts` → `storage/storageLayer` | mutator 内部收口双写 |
+| `storageLayer` → `services/db`（IndexedDB） | 立即本地落盘 |
+| `storageLayer` → `sync/engine.schedulePush` | 触发异步远端同步 |
+| `storageLayer` → `image`（图云层） | 保存时把内嵌 `data:` 临时图替换为引用 key + 孤儿回收 |
+| `sync/engine` → `github/contents` | 拉/推/合并 |
+| `lib/markdown.render` → DOMPurify | 用户内容渲染前转义，防 XSS |
 
 ---
 
-## 7. 技术选型理由
+## 7. 图云层（Image Cloud，P2 ⑥）
 
-| 选型 | 备选方案 | 选择原因（Why） | 约束条件 |
-|------|---------|---------|---------|
-| **零构建原生 JS + 全局 IIFE 命名空间** | React/Vue + Vite/Webpack；ES Module | README.md:3「纯静态页面，**无需后端、无需构建**」是项目的核心卖点：源码即产物，`git push` 后 GitHub Pages 立即生效，无流水线、无产物目录、无 lockfile 漂移。README.md:52 记录代码全用相对路径，**无需任何 base 配置**即可适配 Pages 的 `/workbench/` 子路径。选 IIFE 而非 ES Module，可让页面在 `file://` 直接打开时也不受模块 CORS 限制。 | 代价是加载顺序硬编码在 `index.html:269-276`；AGENTS.md 红线 2 明令**禁止**引入构建工具/框架/npm 依赖 |
-| **GitHub 私有仓库 + 单 JSON 文件当"数据库"** | 自建后端 + PostgreSQL；Firebase/Supabase；纯本地 localStorage | ① 零运维零成本：使用者已有 GitHub 账号，无需再买服务器或注册第三方服务；② `index.html:216`「数据以单个 JSON 文件存放在你的仓库中，多端读写同一文件即可保持一致」——单文件让"跨端一致"退化成一次 GET/PUT，无需设计 API；③ README.md:166「每次改动会产生一次 commit，数据历史在仓库里可完整回溯」——白拿版本历史与误删恢复；④ 数据主权完全归使用者，代码仓库公开而数据仓库私有（README.md:59-60）。 | 单文件 = 全量读写，数据量增长后 payload 线性膨胀；写并发靠 sha 乐观锁；受 GitHub API 每小时 5000 次认证配额约束（README.md:110） |
-| **localStorage 作本地唯一持久化** | IndexedDB；仅内存 | 数据结构就是一个小 JSON 文档，`getItem/setItem` 同步 API 足够，且能在同步未配置时直接降级成完整可用的「本地模式」（`js/github.js:222`）。 | 同步 API 会阻塞主线程；容量上限约 5MB；`js/store.js:91-93` 已对写入失败做 toast 兜底 |
-| **可选 Cloudflare Worker 代理**（`apiBase` 配置项） | 公共 CORS 代理；后端中转；不支持 | README.md:115 记录了真实痛点：部分网络**根本连不上 `api.github.com`**，诊断会卡在「网络连通」步。代理必须做三件事（README.md:124）：转发 `Authorization` 头、补 CORS 响应头（否则浏览器拒收）、**限制只放行工作台用到的接口以防被当成公共代理滥用**。选 Worker 是因为免费额度足够、部署仅需粘贴一个文件（`proxy/cloudflare-worker.js:7-11` 注释「约 3 分钟」）。关键约束写在 `proxy/cloudflare-worker.js:5`：**令牌只经过你自己的 Worker，不流向任何第三方**。 | 代理能看到令牌明文，README.md:126 明确警告「务必只填自己部署的服务」；`workers.dev` 默认域名在部分网络同样受限，需绑自有域名 |
-| **手写 Markdown 渲染器**（`js/markdown.js`，203 行） | marked / markdown-it + DOMPurify | 文件头注释 `js/markdown.js:3-4` 写明动机：「**不依赖任何第三方库，输出前统一转义，避免 XSS**」。零构建前提下引 CDN 库会增加外部依赖与首屏阻塞，且需额外引入 sanitizer；自写渲染器可在 `inline()` 入口先 `U.esc()` 再套规则（`js/markdown.js:45`），从源头保证转义。同时 `[[双链]]` 是本项目特有语法，通用库也需自行扩展。 | 只支持 README.md:144-153 列出的语法子集；嵌套/边界场景弱于成熟库 |
-| **手写力导向布局**（`js/graph.js`，202 行） | d3-force / cytoscape.js | 文件头 `js/graph.js:2` 标注「**无依赖力导向布局**」。图谱规模是个人笔记量级（几十节点），斥力+引力+向心+阻尼的 260 帧模拟（`js/graph.js:86-125`）足够，引 d3 会让"零依赖"破功。 | O(n²) 全对斥力（`js/graph.js:88-99`），节点数大时性能下降 |
-| **`?v=` 时间戳版本参数**（`bump-version.sh`） | Service Worker 缓存策略；文件名 hash | 零构建 = 没有打包器生成内容 hash。commit `81429d7` 消息即「静态资源加版本号**根治缓存旧代码**」，是为解决真实故障而引入；commit `cf46195` 又补了 `index.html:5-7` 三个防缓存 meta 双保险。 | 需人工执行；AGENTS.md 红线 3 把"改 js/css 未 bump 就发版"列为红线 |
+编辑器粘贴/拖拽图片时，由 `stores/data.ts` 暴露的 `uploadImage(blob)` / `resolveImage(key)` 接入，内部经 `services/image/index.ts` 的 `createImageCloudLayer` 在**极简 / 同步**两支间路由：
+
+```mermaid
+flowchart LR
+    Editor["MilkdownEditor<br/>pasteImagePlugin + resolveEditorImagesPlugin"]
+    Store["stores/data.ts<br/>uploadImage / resolveImage"]
+    Layer["createImageCloudLayer"]
+    Local["localCloud（IndexedDB 图片 store）<br/>key: local-img:&lt;sha&gt;"]
+    Git["gitCloud（github/contents.pushImage）<br/>key: images/&lt;hash&gt;.&lt;ext&gt;"]
+    Editor --> Store --> Layer
+    Layer -->|"isConfigComplete(cfg) 为真"| Git
+    Layer -->|"否则（极简模式）"| Local
+```
+
+- **路由判定**：每次调用按最新 `cfg` 实时判定（`isConfigComplete`），用户中途填好配置即从极简无缝切到同步模式。
+- **极简模式**：图片存 IndexedDB 图片 store，`key = local-img:<sha>`，`resolve` 转 object URL，仅本地可用（不跨端）。
+- **同步模式**：图片推到 git 分支 `images/<hash>.<ext>`，`key = images/<hash>.<ext>`；`ShareView` 与 `lib/markdown` 的 `resolveImage` 按 `config.repo/branch` 拼 `raw.githubusercontent.com` 直链渲染。
+- **编辑器接线**：`MilkdownEditor.vue` 挂载 `pasteImagePlugin({upload})` 把粘贴图经 `store.uploadImage` 转 key，并挂 `resolveEditorImagesPlugin(resolve)` 在编辑态把 key 解析回可显示源；`ShareView.vue` 在只读渲染时把 git key 改写为 raw 直链。
+- **存储隔离**：图云层是图片存储的**唯一隔离面**，视图/组件不直接碰 IndexedDB 图片 store 或 Contents API 的图片路径（红线 4 延伸）。
 
 ---
 
@@ -296,17 +319,18 @@ sequenceDiagram
 ```mermaid
 graph TD
     subgraph Dev["本地开发（唯一非生产环境）"]
-        SRC["工作副本<br/>python3 -m http.server 8000"]
+        SRC["工作副本<br/>npm run dev（Vite dev server, 默认 :5173 / 代理 :8000）"]
         HOOK["git hooks（软链 scripts/*）<br/>pre-commit / commit-msg / pre-push"]
-        BUMP["./bump-version.sh<br/>刷新 ?v= 与 wb-version"]
-        SRC --> BUMP --> HOOK
+        SRC --> HOOK
     end
 
     subgraph GitHubOrg["GitHub（生产）"]
-        CodeRepo["代码仓库 GuoxinL/workbench<br/>分支 main · 目录 /(root) · 公开"]
-        PagesCDN["GitHub Pages 静态托管<br/>https://guoxinl.github.io/workbench/"]
-        DataRepo[("数据仓库 GuoxinL/workbench-data<br/>data/workbench.json · 私有")]
-        CodeRepo -->|"push 后自动发布"| PagesCDN
+        CodeRepo["代码仓库 GuoxinL/workbench<br/>分支 main · 公开"]
+        Actions["GitHub Actions<br/>.github/workflows/deploy.yml"]
+        PagesCDN["GitHub Pages 静态托管<br/>https://guoxinl.github.io/workbench/（dist/）"]
+        DataRepo[("数据仓库 GuoxinL/workbench-data<br/>kb/&lt;id&gt;.md + manifest.json · 私有")]
+        CodeRepo -->|"push main 触发"| Actions
+        Actions -->|"npm ci && npm run build → 上传 dist"| PagesCDN
     end
 
     subgraph Optional["可选组件（使用者自部署）"]
@@ -318,7 +342,6 @@ graph TD
         Mobile["移动浏览器 / 添加到主屏幕"]
     end
 
-    HOOK -->|"git push（无 CI 流水线）"| CodeRepo
     PagesCDN --> Desktop
     PagesCDN --> Mobile
     Desktop -->|"Contents API"| DataRepo
@@ -330,41 +353,34 @@ graph TD
 
 | 环境 | 特点 | 配置来源 |
 |------|------|---------|
-| 本地开发 | `python3 -m http.server 8000` 起静态服务，浏览器刷新即验证；无编译步骤、无热更新 | 无配置文件；运行时配置在浏览器 localStorage `wb.cfg.v1` |
+| 本地开发 | `npm run dev` 起 Vite 开发服务器（热更新）；`npm test` 跑 Vitest；`npm run build` 做类型检查 + 构建 | 无环境配置文件；运行时配置在浏览器 localStorage `wb.cfg.v1` |
 | **无 staging** | 不适用。项目为单人自用工具，无预发环境；生产验证靠 Pages 部署后直接刷新 | — |
-| 生产（GitHub Pages） | 静态 CDN，无副本概念、无负载均衡、无扩缩容；`main` 分支 root 目录，`.nojekyll` 关闭 Jekyll | 同上，配置全在使用者浏览器本地；仓库内**不存在**任何环境配置文件 |
-| 代理 Worker（可选） | Cloudflare 边缘无状态运行；由使用者部署到**自己**的账号 | 硬编码在 `proxy/cloudflare-worker.js`：`UPSTREAM`(17)、`ALLOW`(20-25)、`ALLOW_ORIGINS`(29-31) |
+| 生产（GitHub Pages） | 静态 CDN，由 GitHub Actions 从 `dist/` 发布；`base:'./'` 相对路径适配 `/workbench/` 子路径；**缓存由 Vite 产物内容 hash 保证，无需手工 bump 版本** | 同上，配置全在使用者浏览器本地 |
+| 代理 Worker（可选） | Cloudflare 边缘无状态运行；由使用者部署到**自己**的账号 | 硬编码在 `proxy/cloudflare-worker.js`：`UPSTREAM` / `ALLOW`（路径白名单）/ `ALLOW_ORIGINS`（来源白名单） |
 
-**发布流程**（`.harness/docs/devops/deployment.md` 为权威，此处仅记架构相关事实）：改码 → 浏览器刷新验证 → `./bump-version.sh` → `git commit`（本地钩子校验）→ `git push` → Pages 自动发布。
+**发布流程**（`.harness/docs/devops/deployment.md` 为权威）：改码 → `npm run build` 通过（含 `vue-tsc` 类型检查）→ `npm test` 全绿 → `git commit`（本地钩子校验）→ `git push` → GitHub Actions 自动构建并发布到 Pages。**无手工 bump 版本步骤。**
 
-**无 CI/CD 流水线**：仓库内无 `.github/workflows/`、无 Dockerfile、无 K8s/Helm 清单。质量门禁**全部在本地 git 钩子**，通过软链安装（AGENTS.md）：
-
-```
-.git/hooks/pre-commit  -> ../../scripts/pre_commit_check.sh
-.git/hooks/commit-msg  -> ../../scripts/commit_msg_check.sh
-.git/hooks/pre-push    -> ../../scripts/pre_push_check.sh
-```
+**质量门禁**：① 本地 git 钩子（`scripts/*` 软链，见 AGENTS.md）；② CI（`deploy.yml`）再次执行类型检查 + 测试 + 构建。
 
 ---
 
 ## 9. 横切关注点
 
-| 关注点 | 方案 | 关键文件/配置 |
-|--------|------|-------------|
-| 日志 | 仅浏览器 `console`：`console.warn` 用于本地数据/配置解析失败（`js/store.js:67,72`）、`console.error` 用于事件监听器异常（`js/store.js:58`）。**用户可见反馈**走 toast（`js/util.js:105-116`），分 `ok/err/info` 三档。**无远端日志采集、无日志级别开关、无结构化日志** | `js/util.js:105`、`js/store.js:58,67,72` |
-| 链路追踪 | **不适用**。无后端、无跨服务调用，不存在 traceID 传播场景。替代能力是**五步同步诊断** `diagnose()`：配置检查 → 网络连通 → 令牌有效性 → 仓库访问与写权限 → 数据文件，逐步回调渲染并在失败处**中断并给出具体处置建议** | `js/github.js:284-368`、UI 在 `js/app.js:144-166` |
-| 认证鉴权 | 应用**自身无登录态**（单机自用）。对 GitHub 的认证使用使用者的 Personal Access Token，以 `Authorization: Bearer` 发送；推荐细粒度令牌 + 仅授权数据仓库 + `Contents: Read and write`（README.md:66-75）。写权限在连接测试时前置校验 `permissions.push`（`js/github.js:265`、`js/github.js:342`） | `js/github.js:54-60,265,342` |
-| 敏感数据处理 | Token 只存 localStorage `wb.cfg.v1`，**从不写入 `data/workbench.json`**（`serialize()` 只输出 `version/updatedAt/todos/notes`，`js/store.js:312-321`）、**从不打日志**、**从不硬编码**。设置面板输入框为 `type="password"`（`index.html:235`）。已知取舍：明文存于 localStorage，README.md:165 提示公共电脑用后清空 | `js/store.js:312`、`index.html:235`、AGENTS.md 红线 5 |
-| XSS 防护 | 用户内容渲染前统一 `U.esc()` 转义 5 个字符（`js/util.js:60-64`）；`markdown.js` 在 `inline()` 第一行即整体转义再套规则（`js/markdown.js:45`）；图谱节点标题同样经 `U.esc()`（`js/graph.js:147`）；纯文本内容优先走 `el(...,{text})` 走 `textContent`（`js/util.js:50`） | `js/util.js:60`、`js/markdown.js:45`、`js/graph.js:147` |
-| 代理侧安全 | 双白名单：**路径白名单** `ALLOW` 正则只放行 4 类接口（`proxy/cloudflare-worker.js:20-25`）+ **来源白名单** `ALLOW_ORIGINS`（默认仅 `https://guoxinl.github.io`，`proxy/cloudflare-worker.js:29-31`）；OPTIONS 预检单独返回 204；仅透传 4 个白名单请求头，Worker 自身不存储不记录令牌 | `proxy/cloudflare-worker.js:20-31,55-78` |
-| 配置管理 | 单层：`DEFAULT_CFG`（`js/store.js:31-39`）↔ localStorage `wb.cfg.v1`。**空值回落**在两处双保险：加载时逐项回落（`js/store.js:74-77`）+ 同步引擎侧 `normCfg()` 再回落一次（`js/github.js:34-41`），对应 commit `253bc3b` / `6427394`。无配置中心、无环境变量、无配置文件 | `js/store.js:31-39,74-77`、`js/github.js:34-41` |
-| 错误处理 | 分三层：① 网络层 `req()` 统一 12s 超时 + 网络错误中文化（`js/github.js:67-91`）；② 协议层 `readErr()` 按状态码映射人话（`js/github.js:93-103`）；③ 展示层 `setState('error')` 点亮红点 + 非静默时 toast（`js/github.js:201-206`）。**无统一错误码体系**（无跨服务契约需求） | `js/github.js:67-103,201-206` |
-| 重试 / 降级 | **冲突重试**：PUT 遇 409/422 → 重新拉取合并后重试，最多 3 次，退避 `350ms × attempt`（`js/github.js:139-143,192-197`）。**并发排队**：静默调用复用进行中的 Promise，用户主动调用则排队等完再跑一次（`js/github.js:220-232`）。**降级**：`cfgValid()` 不通过即进入 `off` 本地模式，功能完整仅不同步（`js/github.js:222`、`js/app.js:184`） | `js/github.js:139,192,220`、`js/app.js:184` |
-| 熔断 | **不适用**。单一外部依赖（GitHub API），失败即降级本地模式，无需熔断器。频率控制靠轮询间隔下限 5s / 上限 300s 的钳制（`js/github.js:244`）与推送侧 1.5s 防抖（`js/github.js:237`） | `js/github.js:237,244` |
-| 数据一致性 | **最终一致性 + 逐条 LWW**。写路径无事务概念；`mergeInto()` 以 `id` 为主键按 `updatedAt` 取新（`js/store.js:265-294`）；删除用墓碑传播（`js/store.js:186-192,222-232`）；提交用 `sha` 乐观锁防丢写。已知取舍：同一条记录被两端同时改，较早写入被丢弃（README.md:138） | `js/store.js:265,312`、`js/github.js:131` |
-| 离场保护 | `beforeunload` 时先 `WB.notes.flush()` 强制落盘编辑器内容，若 `dirty` 未推送则弹原生确认框拦截（`js/app.js:48-55`）；笔记编辑器 700ms 防抖自动保存 + 失焦/切笔记时 `flushNow()`（`js/notes.js:18,61,145`） | `js/app.js:48`、`js/notes.js:18` |
-| 可观测性（指标） | **不适用**。无指标采集、无 APM、无埋点。唯一"运行状态"是顶栏同步胶囊的四态指示（同步中/已同步/待同步/同步失败，`js/app.js:102-118`） | `js/app.js:102` |
-| 自动化测试 | **当前缺失**，见 §12 技术债。仓库无任何测试文件、无测试框架、无覆盖率工具 | — |
+| 关注点 | 方案 | 关键文件 |
+|--------|------|---------|
+| 日志 | 仅浏览器 `console`（`warn`/`error` 用于解析失败/异常）；**用户可见反馈**走 Element Plus 消息/弹层。无远端日志采集、无日志级别开关、无结构化日志 | `stores/*`、`services/*` |
+| 链路追踪 | **不适用**。替代能力是**五步同步诊断** `runDiagnose()`：配置检查 → 网络连通 → 令牌有效性 → 仓库写权限 → 数据文件，逐步给出处置建议 | `github/diagnose.ts` |
+| 认证鉴权 | 应用**自身无登录态**（单机自用）。对 GitHub 用使用者 PAT（`Authorization: Bearer`）；推荐细粒度令牌 + 仅授权数据仓库 + `Contents: Read and write`。写权限在连接测试时前置校验 `permissions.push` | `github/diagnose.ts` |
+| 敏感数据处理 | Token 只存 localStorage `wb.cfg.v1`，**从不写入远端数据 / 落日志 / 硬编码**（红线 5）。设置面板输入框 `type="password"` | `stores/data.ts`、`common/SettingsSheet.vue`、AGENTS.md 红线 5 |
+| XSS 防护 | 用户内容渲染前经 `lib/markdown` + **DOMPurify** 转义（`src/lib/markdown` 遵循）；禁止把未转义内容拼进 `innerHTML`；`lib/html.ts` 的 `esc()` 用于纯文本兜底 | `lib/markdown/*`、`lib/html.ts`、AGENTS.md 安全基线 2 |
+| 代理侧安全 | 双白名单：路径白名单（只放行 4 类接口）+ 来源白名单（默认仅 `https://guoxinl.github.io`）；仅透传必要请求头，Worker 自身不存储不记录令牌 | `proxy/cloudflare-worker.js` |
+| 配置管理 | 单层：`wb.cfg.v1` ↔ 默认值；`isConfigComplete()` 在诊断/引擎两处守卫。无配置中心、无环境变量 | `stores/data.ts`、`github/diagnose.ts` |
+| 错误处理 | 分三层：网络层（12s 超时 + 中文化）→ 协议层（按状态码映射人话）→ 展示层（SyncChip 四态：本地模式/同步中/已同步/同步失败）。**无统一错误码体系** | `github/diagnose.ts`、`sync/engine.ts`、`common/SyncChip.vue` |
+| 重试 / 降级 | **冲突重试**：PUT 遇 409 / `conflictSlug` → 用刚拉到的远端 sha 重拉合并后重试，上限 `MAX_RETRY`，退避 `RETRY_BACKOFF×attempt`。**并发排队**：复用 inFlight。降级：`isEnabled()/isConfigComplete()` 不通过即 `off` 本地模式，功能完整仅不同步 | `sync/engine.ts` |
+| 熔断 | **不适用**。单一外部依赖，失败即降级本地模式；频率靠轮询间隔钳制 + 推送防抖 | `sync/engine.ts` |
+| 数据一致性 | **最终一致性 + 逐条 LWW** + 软删墓碑 + `sha` 乐观锁。取舍：同一条记录被两端同时改，较早写入被丢弃 | `sync/merge.ts`、`sync/serialize.ts` |
+| 可观测性（指标） | **不适用**。唯一"运行状态"是 `SyncChip` 四态指示 | `common/SyncChip.vue` |
+| 自动化测试 | **Vitest4 + jsdom + fake-indexeddb + @vue/test-utils**；`src/**/*.test.ts` 与 `proxy/**/*.test.ts`；`src/test/setup.ts` 全局 setup。三段式规范见 `unittest/unittest.md` | `vite.config.ts`、`src/test/setup.ts` |
 
 ---
 
@@ -372,36 +388,33 @@ graph TD
 
 | # | 决策 | Why | 影响范围 | 日期 |
 |---|------|-----|---------|------|
-| 1 | 用 GitHub 私有仓库的单个 JSON 文件当数据后端，前端纯静态托管在 Pages | 零后端、零运维、零成本；使用者完全掌握数据主权；白拿 commit 历史做版本回溯 | 全局架构；决定了后续所有同步/合并设计 | 2026-07（commit `628ea38`） |
-| 2 | 逐条记录 LWW 合并，而非整文件覆盖 | 整文件覆盖会让两端并发编辑**不同条目**时互相丢数据；按 `id` + `updatedAt` 逐条取新可把冲突面收敛到"同一条记录"（README.md:134） | `js/store.js:265-294`（`mergeInto`）、`js/store.js:297-309`（`diffFromRemote`） | 2026-07（commit `628ea38`） |
-| 3 | 删除采用软删除墓碑，30 天后在序列化时清理 | 硬删除在多端场景下会被其它设备的旧数据"复活"；墓碑保证删除动作可传播。设 30 天上限是为控制单文件体积（README.md:136） | `js/store.js:186-192,222-232,312-321` | 2026-07（commit `628ea38`） |
-| 4 | 提交带 `sha` 做乐观锁，冲突（409/422）时重新拉取合并后重试，上限 3 次 | GitHub Contents API 的 PUT 本身要求 `sha` 匹配，天然提供 CAS；重试而非报错可让"两端几乎同时提交"这类高频场景自愈 | `js/github.js:125-148,156-199` | 2026-07（commit `628ea38`） |
-| 5 | 同步入口改为**并发排队**：静默调用复用进行中的 Promise，用户主动调用排队后重跑 | 原实现检测到"正忙"直接 `return false`，调用方把"忙"误判成"失败"。轮询每 5s 触发、单次耗时可达 2s+，手动点同步撞上轮询是大概率事件，于是出现"网络正常却报同步失败"（`js/github.js:209-219` 完整记录了这段归因） | `js/github.js:220-234`；调用方判定改为 `!== false`（`js/app.js:98,180`） | 2026-07（commit `81429d7`） |
-| 6 | "两端已一致、无需推送"必须返回真值对象而非 `merged` 布尔 | 早期返回 `merged`（可能为 `false`），让**成功的空同步**被上层误报成失败（`js/github.js:178-180` 注释原文记录） | `js/github.js:181` | 2026-07（commit `81429d7`） |
-| 7 | 全部静态资源加 `?v=<时间戳>` 版本参数，由 `bump-version.sh` 统一刷新 | 零构建没有内容 hash，浏览器命中旧缓存会导致"线上表现与仓库代码不一致"，排障极其困难。commit 消息原文即「静态资源加版本号**根治**缓存旧代码」 | `index.html:14,269-276`、`bump-version.sh`；AGENTS.md 红线 3 | 2026-07（commit `81429d7`） |
-| 8 | 增加可配置 `apiBase` + 随仓附带 Cloudflare Worker 代理脚本 | 部分网络访问不了 `api.github.com`，此前用户只能看到笼统的"同步失败"。同期引入五步诊断把失败拆成可定位的步骤，并把网络错误中文化 | `js/github.js:14-18,284-368`、`proxy/cloudflare-worker.js`、`index.html:237-243` | 2026-07（commit `963e6f0`） |
-| 9 | 仓库/分支/路径允许留空，在**加载侧与引擎侧双重回落**默认值 | 旧版本可能把空字符串写进 localStorage 盖掉默认值，导致同步指向空仓库；单点回落不足以覆盖"配置已被污染"的历史数据（`js/store.js:74` 注释原文） | `js/store.js:74-77`、`js/github.js:34-41` | 2026-07（commit `253bc3b`、`6427394`） |
-| 10 | 笔记改标题时自动重写其它笔记中的 `[[旧标题]]` 引用 | 双链以**标题**（而非 id）为寻址键，不联动改写会导致改名即断链 | `js/notes.js:264-304`（`renameRefs`，包在 `S.batch()` 里只触发一次同步） | 2026-07（commit `628ea38`） |
-| 11 | 引入 `store.batch()` 批量修改包装 | 批量写（如 `renameRefs` 一次改多篇笔记）若每条都 `commit()`，会触发 N 次全量重渲染与 N 次推送调度 | `js/store.js:141-161` | 2026-07（commit `628ea38`） |
+| 1 | 用 GitHub 私有仓库承载数据，前端纯静态托管在 Pages | 零后端、零运维；使用者完全掌握数据主权；白拿 commit 历史做版本回溯 | 全局架构 | 2026-07 |
+| 2 | 远端按文章拆分为 `kb/<id>.md` + 轻量 `manifest.json` 索引（取代旧单文件 `data/workbench.json`） | 单文件全量读写 payload 随数据量线性膨胀；索引驱动可"按 id 差分"只拉改动过的正文，降低配额消耗与冲突面 | `github/contents.ts`、`sync/engine.ts` | 2026-07-31 重构 |
+| 3 | 逐条记录 LWW 合并，而非整文件覆盖 | 整文件覆盖会让两端并发编辑**不同条目**时互相丢数据；按 `id` + `updatedAt` 逐条取新收敛冲突面 | `sync/merge.ts` | 2026-07 |
+| 4 | 删除采用软删除墓碑，过期在序列化时清理 | 硬删除在多端场景会被旧数据"复活"；墓碑保证删除动作可传播 | `sync/serialize.ts` | 2026-07 |
+| 5 | 提交带 `sha` 做乐观锁，冲突（409 / conflictSlug）重拉合并重试 | Contents API 的 PUT 天然要求 sha 匹配（CAS）；重试而非报错可让"两端几乎同时提交"自愈 | `sync/engine.ts`、`github/contents.ts` | 2026-07 |
+| 6 | `sync()` 并发排队：复用 inFlight Promise，而非"忙就 return false" | 早期把"正忙"误判成"失败"，导致"网络正常却报同步失败" | `sync/engine.ts` | 2026-07（commit `81429d7` 精神延续） |
+| 7 | 配置不完整时 `testConnection`/`doSync` 直接 `off`、**不发请求、不误报同步失败** | 空 repo / 缺令牌若发起请求会 404 并误报；回归红线要求默认全新浏览器即为「本地模式」 | `github/diagnose.ts`、`sync/engine.ts` | 2026-07 |
+| 8 | 本地优先双写：`storageLayer` 先写 IndexedDB 再异步触发同步 | 离线可用、写入毫秒级返回；同步失败只降级不影响本地 | `storage/storageLayer.ts` | 2026-07-31 重构 |
+| 9 | 引入可配置 `apiBase` + 随仓附带 Cloudflare Worker 代理脚本 | 部分网络访问不了 `api.github.com`；五步诊断把失败拆成可定位步骤并中文化 | `github/diagnose.ts`、`proxy/cloudflare-worker.js` | 2026-07 |
+| 10 | 笔记改标题时自动重写其它笔记中的 `[[旧标题]]` 引用 | 双链以**标题**（而非 id）为寻址键，不联动改写会导致改名即断链 | `lib/links.ts`（`renameRefs`） | 2026-07 |
+| 11 | 图云层按 `isConfigComplete` 在极简（IndexedDB）/ 同步（git images/）间路由 | 未配置 GitHub 也能本地用图；配置好后无缝切到跨端同步 | `services/image/*` | 2026-07-31（P2 ⑥） |
+| 12 | 构建产物内容 hash 取代 `?v=` 版本参数 / `bump-version.sh` | Vite 自动产出 `assets/index-<hash>.js`，缓存失效由构建机制保证，无需手工 bump | `vite.config.ts` | 2026-07-31 重构 |
 
 ---
 
 ## 11. 不变式与硬性约束
 
-> 任何代码变更都**不得违反**以下规则（前 5 条为 AGENTS.md 明列红线）：
+> 任何代码变更都**不得违反**以下规则（前 5 条为 AGENTS.md 明列红线，已随 2026-07-31 重构更新）：
 
-- **禁止引入构建工具 / 前端框架 / npm 依赖**（含 `package.json`、打包器、CDN 引入大型框架）。破坏"零构建直出 GitHub Pages"的部署模型，项目将失去可直接托管性。
-- **改动任何 js/css 后、提交前必须执行 `./bump-version.sh`**。否则浏览器命中旧缓存，线上行为与仓库代码不一致（已有前科，见 §10 决策 7）。
-- **禁止绕过 `store.js` 直接读写 `wb.*` localStorage 键**。绕开会导致脏标记、LWW 合并、事件广播全部失效，引发同步竞态与数据丢失。
-- **禁止绕过 `github.js` 直接调 GitHub Contents API**。同步状态机、乐观锁、冲突重试、并发排队都在这一层。
-- **令牌禁止以任何形式落库（`data/workbench.json`）、落日志或写入源码**。数据/代码仓库可能公开，Token 泄漏等于交出 GitHub 账户写权限。
-- **`index.html` 中 8 个 `<script>` 的加载顺序不可调整**（`util → store → github → markdown → todos → notes → graph → app`）。无模块系统兜底，顺序错误 = 运行时 `undefined` 崩溃。
-- **新增持久化字段必须同时改三处**：`normTodo()`/`normNote()` 补默认值（`js/store.js:113,128`）、确认 `mergeInto()` 的 LWW 语义对该字段成立（`js/store.js:265`）、确认 `serialize()` 不会把它漏掉或误带敏感信息（`js/store.js:312`）。
-- **任何写操作必须最终走 `store.commit()`**，由它统一刷新 `updatedAt`、置 `dirty`、落盘、广播 `change`。直接改 `data` 而不 commit 的修改不会被同步。
-- **用户内容渲染前必须经 `util.esc()` 转义**，禁止把未转义内容拼进 `innerHTML`。
-- **Worker 代理只做 GitHub API 白名单透传**，新增转发路径必须先加进 `ALLOW`（`proxy/cloudflare-worker.js:20`），禁止开放任意 URL 中转。
+- **禁止绕过 `src/stores/data.ts` 直接读写 `wb.*` localStorage 键**，或绕过 `src/services/github/*` / `src/services/sync/*` 直接调 GitHub Contents API。（红线 4）——绕开会失效脏标记、冲突合并、事件广播，引发同步竞态与数据丢失。
+- **令牌禁止以任何形式落库（`kb/*.md` / `data/workbench.json` / `wb.cfg.v1` 以外的任何位置）、落日志或写入源码**。（红线 5）——数据/代码仓库可能公开，Token 泄漏等于交出 GitHub 账户写权限。
+- **所有实体写操作必须最终走 `storageLayer` / store 的 mutator**，由它统一刷新 `updatedAt`、置脏标记、落盘、触发同步。直接改快照而不经 mutator 的修改不会被同步。
+- **用户内容渲染前必须经转义**（`lib/markdown` 经 DOMPurify；纯文本走 `lib/html.esc()`），禁止把未转义内容拼进 `innerHTML`。
+- **Worker 代理只做 GitHub API 白名单透传**，新增转发路径必须先加进 `ALLOW`，禁止开放任意 URL 中转。
 - **删除记录只能软删除**（置 `deleted:true` + 刷新 `updatedAt`），禁止从数组中 `splice`，否则删除动作无法传播到其它设备。
-- **同步失败判定必须用 `!== false`**，不能用真值判断——`sync()` 成功时可能返回对象也可能返回 `true`（见 §12 技术债）。
+- **新增持久化字段必须同时考虑双向合并逻辑**：确认 `mergeArticles/mergeTodos` 的 LWW 语义对该字段成立、`serialize`/`cleanupTombstones` 不会漏掉或误带敏感信息。
+- **同步失败判定必须区分 `off`（未配置/未启用，非错误）与真实 `error`**：配置不完整只置 `off` + 友好提示，绝不置 `error` / 显示「同步失败」。
 
 ---
 
@@ -409,25 +422,37 @@ graph TD
 
 | 严重度 | 债务描述 | 证据位置 | 风险 | 偿还计划 |
 |--------|---------|---------|------|---------|
-| 🔴 高 | **完全没有自动化测试**。核心的 LWW 合并、墓碑清理、冲突重试、Markdown 渲染均为纯函数，极易测试却零覆盖 | 全仓库无测试文件；`.harness/docs/unittest/unittest.md` 仍为模板 | 合并算法一旦回归会**静默丢数据**，且因是多端异步场景，人工很难复现 | <!-- TODO(sop.init): 待与维护者确认是否引入零依赖测试方案（如浏览器内跑的断言页），需同时满足"禁止引入 npm 依赖"红线 --> |
-| 🔴 高 | **`bump-version.sh` 使用 BSD sed 语法，在 Linux/WSL 上直接报错**。`sed -i ''` 的空串参数只有 macOS/BSD sed 接受 | `bump-version.sh:8,10` | 在 Linux 环境开发时脚本失败 → 版本号未刷新 → 直接踩中 AGENTS.md 红线 3（浏览器缓存旧代码） | 改为兼容写法（先探测 sed 变体，或用 `perl -pi -e` 统一） |
-| 🟡 中 | **`sync()` 返回值类型不一致**：无需推送时返回对象 `{merged, pushed:false}`，推送成功返回 `true`，失败返回 `false` | `js/github.js:181`（对象）、`js/github.js:190`（`true`）、`js/github.js:205`（`false`） | 调用方必须记住用 `ok !== false` 判定（`js/app.js:98,180`），任何人改用真值判断都会引入 §10 决策 6 修过的那个 bug | 统一为 `{ok:boolean, merged, pushed}` 结构，同步改两处调用方 |
-| 🟡 中 | **`deviceId` 生成、持久化并对外暴露，但全项目无任何消费方**。合并算法只看 `updatedAt`，不区分设备 | `js/store.js:12,44,79-83,353`（定义与暴露）；`grep deviceId` 全仓库仅命中 store.js 自身 | 死代码误导后来者以为存在设备维度的冲突处理；也占用一个 localStorage 键 | 二选一：接入合并逻辑（如同一毫秒的 `updatedAt` 用 deviceId 做确定性 tie-break），或直接删除 |
-| 🟡 中 | **有 `manifest.json` 但无 Service Worker**，「PWA」实际只有"添加到主屏幕"能力，**离线完全不可用** | `manifest.json` 存在；全仓库 grep 无 `serviceWorker` / `sw.js` 注册 | 移动端断网时打开主屏图标是白屏，而本应用的数据本就全在 localStorage、离线可用性是天然优势，白白浪费 | 需先解决与 `?v=` 缓存刷新策略的冲突（SW 缓存 + 手动版本号双机制易打架） |
-| 🟡 中 | **全局命名空间 + `<script>` 顺序耦合**，无模块系统。依赖关系靠 `index.html:269-276` 的行序隐式维护 | `js/util.js:4`（建 `window.WB`）、`index.html:269-276` | 新增模块或调整顺序时无任何静态检查，错误只在运行时暴露；也无法做 tree-shaking / 按需加载 | 受 AGENTS.md 红线 2 约束不能引构建工具；可考虑改 ES Module + `type="module"`（但会丢失 `file://` 直开能力，需权衡） |
-| 🟢 低 | **每次数据变更都全量重渲染**：待办列表 `board.innerHTML=''` 后重建全部卡片；笔记列表、反链面板、图谱指纹同理 | `js/todos.js:149-163`、`js/notes.js:114`、`js/notes.js:204` | 数据量达到数百条时会出现可感知的卡顿与滚动位置丢失；当前个人使用量级尚未暴露 | 数据量增长后再做增量 diff 渲染，不提前优化 |
-| 🟢 低 | **图谱力导向为 O(n²) 全对斥力计算**，每帧遍历所有节点对，共 260 帧 | `js/graph.js:88-99,124` | 笔记数上百后布局阶段掉帧 | 需要时改 Barnes-Hut 四叉树近似 |
-| 🟢 低 | **图谱 SVG 通过字符串拼接 + `innerHTML` 整体重绘**，每帧重建整棵 SVG 子树 | `js/graph.js:133-155` | 性能开销大于增量更新；标题虽已 `U.esc()`，但字符串拼 DOM 的模式本身脆弱 | 改为复用 SVG 元素、只更新 `transform` 属性 |
-| 🟢 低 | **`app.js` 绕过 `store.js` 直接读写 2 个 localStorage 键**（`wb.view`、`wb.seeded`，共 4 处调用） | `js/app.js:22,24,73,79` | 严格说与"localStorage 只经 store 读写"的不变式相悖；这几个是纯 UI 态、不参与同步，实际风险低，但破坏了规则的一致性 | 收敛到 `store` 提供的 UI 态读写接口，或在不变式中显式豁免这两个键 |
-| 🟢 低 | **`store` 的 `dirty` / `cfg` 事件已发布但无订阅方** | `js/store.js:99,149`（emit）；全仓库无对应 `on('dirty')` / `on('cfg')` | 死接口，容易让人误以为存在响应式配置更新（实际 `app.js:175` 是命令式调 `restartPoll()`） | 接入或移除 |
-| 🟢 低 | **`.harness/docs/` 下多份文档仍为未填写的模板**（`failures.md` 等），架构文档引用它们时缺乏落点 | `.harness/docs/failures.md:33-40` 仍是 `{{填写}}` 占位 | 历史故障的归因（如缓存旧代码事件）散落在 commit message 里，没有沉淀 | 把 commit `81429d7` / `cf46195` 对应的两次缓存故障补录进 `failures.md` |
+| 🟡 中 | **`d3-force` 在 `package.json` 依赖中但源码未引用**（grep 全仓无 `d3-force`/`d3Force` 使用） | `package.json:21` | 死依赖，增加安装体积；可能当初计划做力导向图谱但未落地 | 删除依赖，或补一个真正使用它的图谱视图 |
+| 🟡 中 | **「图谱」视图未实现**：验证手册 §2/§5 描述的独立「图谱（标签气泡）」路由不存在；实际仅文章内 `LinksPanel` 渲染双链关系图 | `src/router/index.ts`（仅 `/todos` `/articles/:id?` `/share/:id`）；无 `GraphView.vue` | 文档/手册与代码不一致，易误导 | 实现 `GraphView` 并接入 `d3-force`，或把 verification.md §2/§5 改为描述 `LinksPanel` 关系图 |
+| 🟡 中 | **`/settings` 不是路由**：设置是 `common/SettingsSheet.vue` 抽屉（⚙ 触发），但文档/手册偶有「进入 #/settings」表述 | `src/router/index.ts`、`src/components/common/SettingsSheet.vue` | 导航描述误导 | 文档统一为「点 ⚙ 打开设置抽屉」 |
+| 🟢 低 | **`/share/:id` 只读分享**依赖 `raw.githubusercontent.com` 直链拉 `kb/<id>.md`，公开库场景需 `publicRepo` 配置 | `src/views/ShareView.vue`、`github/diagnose.ts:defaultPublicRepo` | 私有库分享需额外配置；未配置时分享可能 404 | 文档补充分享前提 |
+| 🟢 低 | **每次数据变更全量重渲染**风险（Vue 响应式 + 列表重建），数据量达数百条时可感知卡顿 | `components/kb/*`、`components/todos/*` | 个人使用量级尚未暴露 | 数据量增长后再做增量 diff |
 
 ---
 
 ## 13. 演进路线（可选）
 
-<!-- TODO(sop.init): 维护者未在 README / AGENTS.md / commit 历史 / issue 中留下任何路线图或计划性表述，无从推断。以下仅为「§12 技术债偿还」的自然排序，不代表维护者的实际优先级，需确认后再作数。 -->
+- **近期**：处置 `d3-force` 死依赖与「图谱视图未实现」的文档/代码不一致（🟡）；统一设置入口表述（路由 vs 抽屉）。
+- **中期**：为 `sync/merge` / `serialize` / `lib/markdown` 这批纯函数补边界测试（已有 Vitest 基建与 `src/**/*.test.ts` 范例）；完善图云在同步/极简切换下的孤儿回收测试。
+- **远期**：是否补 Service Worker 做离线 PWA、是否实现独立图谱视图（接 `d3-force`），需维护者拍板。
 
-- **近期**：修复 `bump-version.sh` 的 BSD/GNU sed 兼容问题（🔴，直接关联发版红线）；统一 `sync()` 返回值类型（🟡，消除踩坑点）。
-- **中期**：为 `store.mergeInto` / `diffFromRemote` / `serialize` / `markdown.render` 这批纯函数补测试（🔴，需先确定不违反"禁 npm 依赖"红线的测试方案）；处置 `deviceId` 死代码。
-- **远期**：<!-- TODO(sop.init): 是否补 Service Worker 做离线、是否迁移 ES Module，均涉及与现有零构建/缓存刷新模型的取舍，需维护者拍板 -->
+---
+
+## 14. 相关文档索引
+
+| 想了解什么 | 文档位置 |
+|-----------|---------|
+| 上下游 / 集成方关系（GitHub API / Cloudflare Worker 代理） | `.harness/docs/relationship.md` |
+| 术语表（双链 / 脏标记 / 冲突合并 / 图云 / 极简↔同步 / kb/*.md / manifest.json / IndexedDB） | `.harness/docs/glossary.md` |
+| 历史故障与教训 | `.harness/docs/failures.md` |
+| 接口文档总索引 / 编写规范 / 模板 | `.harness/docs/apis/index.md`、`api-standards.md`、`_template.md` |
+| 单元测试规范（环境 / 生成 / 运行调试，三段式） | `.harness/docs/unittest/unittest.md` |
+| 集成测试规范（环境 / 用例 / 运行调试，三段式） | `.harness/docs/integration_test/integration_test.md` |
+| 功能验证手册（每次改动后的自然语言核验流程） | `.harness/docs/verification.md` |
+| 本地环境搭建与启动 | `.harness/docs/devops/env.md` |
+| 日常开发流程（改码 → 构建验证 → 测试 → 提交） | `.harness/docs/devops/development.md` |
+| GitHub Pages 部署 / Worker 代理部署 | `.harness/docs/devops/deployment.md` |
+| 测试环境部署 / 代码同步 | `.harness/docs/devops/test-env-deploy.md` |
+| 编码规范（行长 / 复杂度 / 命名 / 安全编码） | `.harness/docs/coding-style.md` |
+| 团队人工 Code Review 流程与合入门槛 | `.harness/docs/code-review.md` |
+| 日志规范（级别 / 必打场景 / 脱敏） | `.harness/docs/logging.md` |
