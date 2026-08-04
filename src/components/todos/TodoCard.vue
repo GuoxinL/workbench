@@ -21,6 +21,14 @@ const descHtml = computed(() => {
   return renderMarkdown(props.todo.desc, { resolve })
 })
 
+// Bug #1 修复：body 点击若落在链接（wikilink/普通 a）上，只放行链接默认行为
+// （跳转/不跳转），不再触发编辑抽屉，避免描述里的双链被误判为「编辑待办」。
+function onBodyClick(e: MouseEvent) {
+  const t = e.target as HTMLElement
+  if (t.closest('a')) return
+  emit('edit')
+}
+
 const done = computed(() => props.todo.status === 'done')
 const hex = computed(() => colorHex(props.todo.color))
 
@@ -61,7 +69,7 @@ async function remove() {
 <template>
   <div class="card" :class="{ done }" :style="{ '--c': hex }">
     <button class="check" :class="{ on: done }" :title="done ? '标记为待办' : '标记为完成'" @click="toggle" />
-    <div class="body" @click="emit('edit')">
+    <div class="body" @click="onBodyClick">
       <div class="title-row">
         <span class="title">{{ todo.title }}</span>
         <span class="color-tag" :style="{ background: hex }">{{ colorLabel(todo.color) }}</span>
