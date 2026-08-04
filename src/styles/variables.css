@@ -7,6 +7,9 @@
   --brand-weak: #eef2ff;
   --brand-strong: #4338ca;
   --card-bg: #ffffff;
+  --code-bg: #eef0f3;
+  --code-block-bg: #f6f7f9;
+  --code-border: #d8dadf;
   --radius: 12px;
   --radius-sm: 8px;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
@@ -34,6 +37,9 @@
   --brand-weak: #1e1b4b;
   --brand-strong: #818cf8;
   --card-bg: #1e1f22;
+  --code-bg: #1e1f22;
+  --code-block-bg: #16181b;
+  --code-border: #2e2f33;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);

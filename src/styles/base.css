@@ -238,28 +238,39 @@ a.wikilink.missing {
   color: var(--muted);
   font-style: normal;
 }
-/* 代码：行内 + 围栏 */
+/* 代码：行内 + 围栏
+ * 注意：nord 主题（@milkdown/theme-nord）的 style.css 依赖 Tailwind v4 变量
+ * （--color-gray-200 等），本项目未引入 Tailwind v4，这些变量未定义导致 nord 的
+ * 代码背景声明无效；且 nord 在编辑器初始化时可能运行时注入 CSS。此处用更高特异性
+ * 选择器 + !important 确保行内/围栏代码始终有可见外框，不依赖 nord。 */
 .milkdown code,
-.milkdown pre {
+.milkdown-theme-nord code,
+.milkdown pre,
+.milkdown-theme-nord pre {
   font-family: 'Consolas', 'Menlo', 'Monaco', monospace;
   font-size: 0.9em;
 }
-.milkdown code {
-  background: var(--bg);
+.milkdown code,
+.milkdown-theme-nord code {
+  background: var(--code-bg) !important;
+  border: 1px solid var(--code-border) !important;
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: 4px;
   color: var(--brand);
 }
-.milkdown pre {
-  background: var(--card-bg);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 6px 14px 8px;
+.milkdown pre,
+.milkdown-theme-nord pre {
+  background: var(--code-block-bg) !important;
+  border: 1px solid var(--code-border) !important;
+  border-radius: 6px;
+  padding: 10px 14px;
   margin: 0 0 1.5em;
   overflow-x: auto;
 }
-.milkdown pre code {
-  background: none;
+.milkdown pre code,
+.milkdown-theme-nord pre code {
+  background: none !important;
+  border: 0 !important;
   padding: 0;
   color: inherit;
   font-size: 0.95em;

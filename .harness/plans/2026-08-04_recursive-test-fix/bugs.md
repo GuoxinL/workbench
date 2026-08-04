@@ -35,3 +35,11 @@
 - **现象**：文章标题若包含双链 `[[x]]` 或强调 `**x**`/`*x*`/`` `x` ``/链接，点击右侧大纲项不会滚动定位到该标题（如同点击无反应）。
 - **根因**：`src/components/kb/ArticleOutline.vue:13` 大纲的 `id` slug 由**序列化 markdown 原文** `text.toLowerCase().replace(/\s+/g,'-')` 生成（含 `[[x]]`/`**` 等原始语法）；而 `src/components/kb/ArticleEditor.vue:206 onJumpToHeading` 用**渲染后纯文本** `h.textContent` 生成 slug 匹配。两者不一致，例如标题 `## 见 [[文档]]`：大纲 id=`见-[[文档]]`、渲染 slug=`见-文档`，永不相等。普通场景 `## **重要** 标题` 同样失效。
 - **修复**：在 `ArticleOutline.vue` 增加 `cleanHeadingText()`，对标题文本先剥离 markdown 语法（`[[x]]`→`x`、`**x**`/`*x*`/`` `x` ``/`~~x~~`→`x`、`[t](u)`→`t`）后再用于显示与生成 slug；显示也同步去掉丑陋的原始语法。大纲 slug 与渲染 textContent slug 由此对齐，`jump` 可正确命中。
+
+## Bug #5 — 文章代码渲染无可见外框（行内 + 围栏代码块）
+
+- **状态**：🟢 已修复，已 push 到 main 部署中（待统一验证）
+- **严重度**：中（代码不可辨识，影响阅读体验，但非数据/功能损坏）
+- **现象**：文章（阅读视图与编辑器内）中行内代码 `code` 与多行围栏代码块 `pre code` 都没有可见外框/背景，行内代码与正文几乎无区分，代码块只有极浅边框。
+- **根因**：`src/styles/base.css` 中 `.milkdown code` 背景设为 `var(--bg)`（等于页面背景 → 不可见）且无边框；`.milkdown pre` 只用 `--line`（极浅分割线）作边框。而 nord 主题（`@milkdown/theme-nord/style.css`，经 `main.ts:6` 引入）本应提供灰色背景，但其规则依赖 Tailwind v4 变量（`--color-gray-200/100/700`、`--spacing`、`--font-mono` 等），本项目未引入 Tailwind v4，这些变量未定义 → nord 的代码背景声明无效，实际完全回退到 base.css 的不可见配色。编辑器内 nord 的 `.milkdown-theme-nord code`（特异性 0,2,1，且可能运行时注入）还会盖过 base.css 的 `.milkdown code`（0,1,1）。
+- **修复**：在 `src/styles/variables.css` 新增令牌 `--code-bg`/`--code-block-bg`/`--code-border`（明/暗双模式）；`src/styles/base.css` 中将代码规则选择器提升为 `.milkdown code, .milkdown-theme-nord code, .milkdown pre, .milkdown-theme-nord pre` 并加 `!important` 覆盖 nord 运行时注入，确保行内代码有可见背景+边框、代码块有清晰边框，且不影响代码块内部 `code`（重置背景/边框）。
