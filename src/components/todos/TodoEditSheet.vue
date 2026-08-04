@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import type { Todo, TodoStatus, ColorKey } from '@/types'
 import { useDataStore } from '@/stores/data'
 import ColorSelect from './ColorSelect.vue'
+import MilkdownEditor from '@/components/kb/MilkdownEditor.vue'
 
 const props = defineProps<{ modelValue: boolean; todo: Todo | null }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
@@ -84,10 +85,10 @@ function onKeydown(e: KeyboardEvent) {
         <span>标题</span>
         <el-input v-model="form.title" placeholder="待办标题" />
       </label>
-      <label class="field">
+      <div class="field">
         <span>描述</span>
-        <el-input v-model="form.desc" type="textarea" :rows="4" placeholder="补充说明（可选）" />
-      </label>
+        <MilkdownEditor v-model="form.desc" :key="props.todo?.id" class="desc-editor" />
+      </div>
       <div class="field">
         <span>颜色</span>
         <ColorSelect v-model="form.color" />
