@@ -10,13 +10,23 @@ interface Gh {
   id: string
 }
 
+// 剥离 markdown 行内语法，使大纲文本/锚点 slug 与渲染后的纯文本一致：
+// 双链 [[x]] → x；强调 **x**/*x*/`x`/~~x~~ → x；链接 [t](u) → t
+function cleanHeadingText(raw: string): string {
+  return raw
+    .replace(/\[\[([^\]]+)\]\]/g, '$1')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__|~~|\*|_|`)/g, '')
+    .trim()
+}
+
 const headings = computed<Gh[]>(() =>
   props.content
     .split('\n')
     .filter((l) => /^#{1,4}\s/.test(l))
     .map((l) => {
       const m = l.match(/^(#{1,4})\s+(.+)/)!
-      const text = m[2].trim()
+      const text = cleanHeadingText(m[2])
       return {
         level: m[1].length,
         text,
