@@ -151,8 +151,20 @@ const MilkdownCore = defineComponent({
             | undefined
           ctx.set(remarkStringifyOptionsCtx, {
             ...prev,
-            // wikilink 非 mdast 标准节点，Handlers 类型不包含它，故整体断言
-            handlers: { ...(prev?.handlers ?? {}), wikilink: wikilinkMdHandler } as any,
+            // Bug #2 修复：覆盖 text handler，跳过 remark 默认的 `state.safe`
+            // 转义。默认会按上下文把 `#`/`*`/_/>/[/(` 等字符加 `\`（行首 `#` →
+            // `\#`、行首 `>` → `\>` 等），导致用户输入的 markdown 标记被当作
+            // 字面字符保留，渲染/大纲/字数全部失效。直接输出原文本值即可：
+            // - 行内 mark（emphasis/strong/wikilink/inlineCode/link）走自己的
+            //   mark handler，不会经过 text handler。
+            // - 块级节点（heading/code_block/blockquote/list 等）也走各自
+            //   的 handler，不依赖 text 转义。
+            // - paragraph/heading 内的纯文本节点转出来的就是用户输入的原文。
+            handlers: {
+              ...(prev?.handlers ?? {}),
+              wikilink: wikilinkMdHandler,
+              text: (node: { value?: string }) => node.value ?? '',
+            } as any,
           })
           ctx.get(listenerCtx).markdownUpdated((_, md: string) => {
             if (!scanning) emit('update:modelValue', md)
