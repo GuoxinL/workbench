@@ -4,10 +4,22 @@ import type { Todo } from '@/types'
 import { useDataStore } from '@/stores/data'
 import { colorHex, colorLabel } from '@/lib/colors'
 import { formatTime } from '@/lib/datetime'
+import { renderMarkdown } from '@/lib/markdown'
+import { slug } from '@/lib/slug'
 
 const props = defineProps<{ todo: Todo }>()
 const emit = defineEmits<{ edit: [] }>()
 const store = useDataStore()
+
+// 描述按 Markdown 富文本渲染：标题→文章 id 解析，让 [[双链]] 正确高亮/跳转
+const descHtml = computed(() => {
+  if (!props.todo.desc) return ''
+  const resolve = (title: string) => {
+    const a = store.articles.find((n) => !n.deleted && slug(n.title) === slug(title))
+    return a ? a.id : null
+  }
+  return renderMarkdown(props.todo.desc, { resolve })
+})
 
 const done = computed(() => props.todo.status === 'done')
 const hex = computed(() => colorHex(props.todo.color))
@@ -54,7 +66,7 @@ async function remove() {
         <span class="title">{{ todo.title }}</span>
         <span class="color-tag" :style="{ background: hex }">{{ colorLabel(todo.color) }}</span>
       </div>
-      <div v-if="todo.desc" class="desc">{{ todo.desc }}</div>
+      <div v-if="todo.desc" class="desc todo-desc-md" v-html="descHtml" />
       <div class="meta">
         <span v-if="dueLabel" class="due" :class="{ over: overdue }">{{ dueLabel }}</span>
         <span class="time">{{ timeLabel }}</span>
@@ -144,7 +156,6 @@ async function remove() {
   color: var(--muted);
   font-size: 13px;
   margin-top: 3px;
-  white-space: pre-wrap;
   word-break: break-word;
 }
 .meta {
@@ -188,3 +199,76 @@ async function remove() {
   color: #ef4444;
 }
 </style>
+
+<!-- 非 scoped：富文本由 v-html 注入，scoped 的 data-v 不会落到其子树，
+     且 Vite 的 lightningcss 会丢弃 :deep() 规则；改用唯一类 .todo-desc-md
+     + 普通后代选择器，保证生产构建中样式仍生效。 -->
+<style>
+.todo-desc-md p {
+  margin: 0 0 6px;
+}
+.todo-desc-md p:last-child {
+  margin-bottom: 0;
+}
+.todo-desc-md ul,
+.todo-desc-md ol {
+  padding-left: 1.2em;
+  margin: 4px 0;
+}
+.todo-desc-md li {
+  margin: 2px 0;
+}
+.todo-desc-md h1,
+.todo-desc-md h2,
+.todo-desc-md h3 {
+  font-size: 1em;
+  font-weight: 600;
+  margin: 6px 0 4px;
+}
+.todo-desc-md code {
+  background: var(--bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.todo-desc-md pre {
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 10px;
+  overflow-x: auto;
+  margin: 4px 0;
+}
+.todo-desc-md pre code {
+  background: none;
+  padding: 0;
+}
+.todo-desc-md blockquote {
+  border-left: 2px solid var(--line);
+  padding-left: 8px;
+  margin: 4px 0;
+  color: var(--muted);
+}
+.todo-desc-md hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 6px 0;
+}
+.todo-desc-md img {
+  max-width: 100%;
+}
+.todo-desc-md a {
+  color: var(--brand);
+  text-decoration: none;
+}
+.todo-desc-md a.wikilink {
+  color: var(--brand);
+  border-bottom: 1px dashed var(--brand);
+  cursor: pointer;
+}
+.todo-desc-md a.wikilink.missing {
+  color: #ef4444;
+  border-bottom-color: #ef4444;
+}
+</style>
+
