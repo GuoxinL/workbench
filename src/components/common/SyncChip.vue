@@ -19,13 +19,24 @@ const label = computed(() => {
   }
 })
 
+// Bug #3 修复：error 时同步把错误信息加到 title，鼠标悬浮即可看到详细
+// 原因；成功/空闲时 title 提示「点击手动同步」。
+const title = computed(() => {
+  if (store.phase === 'error') {
+    return store.lastSyncError
+      ? `点击重试 · ${store.lastSyncError}`
+      : '点击重试'
+  }
+  return '点击手动同步'
+})
+
 function manualSync() {
   store.sync(true) // S6：手动同步
 }
 </script>
 
 <template>
-  <button class="chip" :class="store.phase" :title="store.phase === 'error' ? '点击重试' : '点击手动同步'" @click="manualSync">
+  <button class="chip" :class="store.phase" :title="title" @click="manualSync">
     <span class="dot" />
     {{ label }}
   </button>

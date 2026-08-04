@@ -10,7 +10,7 @@ export interface SyncAdapter {
   getLocalArticles(): Article[]
   getLocalManifestSha(): string | undefined
   applyRemote(articles: Article[], manifest: Manifest): void
-  setPhase(p: SyncPhase): void
+  setPhase(p: SyncPhase, errorMsg?: string): void
   /** 推送成功后回填 manifest.json 的 sha（维护乐观锁，可选） */
   setManifestSha?(sha: string): void
   /** 本地待办（P1 ④）；未实现时本轮不同步待办，保持纯文章同步的旧行为 */
@@ -142,7 +142,8 @@ export function createSyncEngine(adapter: SyncAdapter, contents: ContentsApi): S
         if (pushResult.conflictSlug) {
           attempt++
           if (attempt >= MAX_RETRY) {
-            adapter.setPhase('error')
+            // Bug #3 修复：冲突重试耗尽时透传具体错误，给用户可诊断线索
+            adapter.setPhase('error', `推送冲突，已重试 ${MAX_RETRY} 次：${pushResult.conflictSlug}`)
             return { ok: false, merged: changed, pushed: false }
           }
           await sleep(RETRY_BACKOFF * attempt)
@@ -152,8 +153,10 @@ export function createSyncEngine(adapter: SyncAdapter, contents: ContentsApi): S
         adapter.setManifestSha?.(pushResult.manifestSha)
         return { ok: true, merged: changed, pushed: true }
       }
-    } catch {
-      adapter.setPhase('error')
+    } catch (e) {
+      // Bug #3 修复：捕获详细错误，避免「同步失败」裸 chip；strip 堆栈只留 message
+      const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e)
+      adapter.setPhase('error', msg)
       return { ok: false, merged: false, pushed: false }
     }
   }

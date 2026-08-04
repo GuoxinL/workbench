@@ -125,6 +125,9 @@ export const useDataStore = defineStore('data', () => {
   const articles = computed(() => data.value.articles)
   const articleById = (id: string) => data.value.articles.find((n) => n.id === id && !n.deleted)
   const todoById = (id: string) => data.value.todos.find((t) => t.id === id && !t.deleted)
+  // Bug #3 修复：保留最近一次同步失败的错误信息，供 SyncChip 展示给用户
+  // 诊断；只在 chip 进入 'ok' 时清空，避免旧错误与新错误混淆。
+  const lastSyncError = ref<string>('')
 
   function persist() {
     data.value.updatedAt = Date.now()
@@ -319,8 +322,10 @@ export const useDataStore = defineStore('data', () => {
       persist()
       void db.saveTodos(remoteTodos)
     },
-    setPhase: (p: SyncPhase) => {
+    setPhase: (p: SyncPhase, errorMsg?: string) => {
       phase.value = p
+      // Bug #3 修复：error 时落库错误信息；ok 时清空避免老错误粘连
+      lastSyncError.value = p === 'error' ? errorMsg || '未知同步错误' : ''
     },
     setManifestSha: (sha: string) => {
       manifestSha.value = sha
@@ -449,6 +454,7 @@ export const useDataStore = defineStore('data', () => {
     data,
     dirty,
     phase,
+    lastSyncError,
     todos,
     articles,
     articleById,
