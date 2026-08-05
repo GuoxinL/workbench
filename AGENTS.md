@@ -1,6 +1,6 @@
 # workbench — AI 协作入口
 
-> **个人工作台**：纯客户端单体（Client-only Monolith）PWA（待办卡片 + 双向链接笔记），基于 **Vue3 + Vite + TypeScript + Pinia** 标准构建流水线；本地双重存储（`localStorage` 即时加载层 + `IndexedDB` 结构化层），并经 GitHub Contents API 双向同步到数据仓库 `kb/<id>.md` + `manifest.json`；GitHub Pages（GitHub Actions 构建发布）托管。维护者：Guoxin.Liu <lgx31@sina.cn>。
+> **个人工作台**：纯客户端单体（Client-only Monolith）PWA（待办卡片 + 双向链接笔记），基于 **Vue3 + Vite + TypeScript + Pinia** 标准构建流水线；本地双重存储（`localStorage` 即时加载层 + `IndexedDB` 结构化层），并经 GitHub Contents API 双向同步到数据仓库 `kb/<id>.md`（文章）+ `todos/<id>.json`（待办）；索引由 `kb/` 与 `todos/` 目录树的**每文件 blob sha** 现拉现用，**不再有中央 `manifest.json`**（见下方红线 / 架构不变式）。GitHub Pages（GitHub Actions 构建发布）托管。维护者：Guoxin.Liu <lgx31@sina.cn>。
 >
 > 本文件是 AI 协作的**唯一真源入口**（AGENTS.md）。CODEBUDDY.md / CLAUDE.md 均为指向本文件的软链接。
 > 具体技术文档维护到 `.harness/docs/`，任务产物维护到 `.harness/plans/<任务目录>/`，本文件只做索引 + 恢复协议 + 项目特定红线。
@@ -140,8 +140,8 @@
 
 ### 模块分层（改代码前先认清入口）
 
-- `src/stores/data.ts`：**唯一**数据层。localStorage 键 `wb.data.v1` / `wb.cfg.v1` / `wb.manifestSha.v1` 只允许经它读写；变更即写盘并驱动同步引擎。
-- `src/services/github/*` + `src/services/sync/*`：**唯一**远端同步通道（GitHub Contents API ↔ `workbench-data` 仓库的 Markdown 文档库 `kb/*.md` + `manifest.json`，含脏标记、冲突合并、五步同步诊断）。新增持久化字段必须同步考虑双向合并逻辑。
+- `src/stores/data.ts`：**唯一**数据层。localStorage 键 `wb.data.v1` / `wb.cfg.v1` / `wb.syncState.v1`（本地同步基线 `path→sha`，替代旧 `wb.manifestSha.v1`）只允许经它读写；变更即写盘并驱动同步引擎。
+- `src/services/github/*` + `src/services/sync/*`：**唯一**远端同步通道（GitHub Contents API ↔ `workbench-data` 仓库的 Markdown 文档库 `kb/<id>.md` + `todos/<id>.json`，目录树每文件 blob sha 作索引与乐观锁，含脏标记、冲突合并、五步同步诊断）。新增持久化字段必须同步考虑双向合并逻辑。
 - `src/views/*` 视图、`src/components/*` 组件、`src/lib/*` 纯函数库（markdown / 双链 / slug）、`src/composables/*` 组合式。
 - `proxy/cloudflare-worker.js`：GitHub API **白名单透传**代理（用户自部署），令牌只经用户自己的 Worker。
 

@@ -111,7 +111,7 @@
 | 组件名 | 仓库 / 路径 | 主分支 | 备注 |
 |--------|------------|--------|------|
 | 静态站点（唯一可部署单元） | `git@github.com:GuoxinL/workbench.git`，仓库根目录 | `main` | Vite 工程；push 后 GitHub Actions 构建并发布到 Pages，无手动流水线 |
-| 数据仓库 | `GuoxinL/workbench-data` → `kb/<id>.md` + `manifest.json` | `main` | **必须私有**；不是"部署"对象，由应用经 Contents API 读写 |
+| 数据仓库 | `GuoxinL/workbench-data` → `kb/<id>.md` + `todos/<id>.json`（目录树每文件 blob sha 索引，无中央 `manifest.json`） | `main` | **必须私有**；不是"部署"对象，由应用经 Contents API 读写 |
 | API 代理 Worker（可选） | 本仓库 `proxy/cloudflare-worker.js` | — | 手动在 dash.cloudflare.com 粘贴部署，无 CLI / 无 `wrangler.toml` |
 
 ### 常用环境
@@ -147,6 +147,6 @@ curl -s -o /dev/null -w "%{http_code}\n" https://guoxinl.github.io/workbench/   
 2. **发布前必须本地跑过 `npm run build` + `npm test`**（类型检查 + 测试 + 构建全过）。重构后**无需、也不再支持**手工刷 `?v=` 版本号——缓存由 Vite 产物内容 hash 保证（旧 `bump-version.sh` 已移除）。
 3. **本地验证时改完通常 HMR 自动刷新**；若遇强缓存，浏览器 `Ctrl/Cmd + Shift + R` 或 DevTools → Network 勾 Disable cache。生产缓存由 hash 文件控制，重新构建即换新。
 4. **切换数据仓库 / 分支后先点「测试连接」再点「保存」**。细粒度 PAT 的 Repository access 若没勾上新仓库，会直接 404；写权限不足（只给 Read）也无法同步（`src/services/github/diagnose.ts` 校验 `permissions.push`）。
-5. **不要手工编辑远端 `kb/<id>.md` / `manifest.json`**。改坏会触发同步解析失败，只能删掉让应用重建，或用设置抽屉「导出备份」的内容覆盖回去。
+5. **不要手工编辑远端 `kb/<id>.md` / `todos/<id>.json`**（索引现由 `kb/` + `todos/` 目录树每文件 blob sha 承担，无中央 `manifest.json`）。改坏会触发同步解析/校验失败（单条损坏仅丢弃该条），只能删掉让应用重建，或用设置抽屉「导出备份」的内容覆盖回去。
 6. **多端并发验证注意 LWW 语义**：合并按记录 `id` + `updatedAt` 逐条取新，同一条记录被两端同时改，较早写入会被丢弃——这是预期行为，不是 bug。
 7. **令牌不要在验证环境里复用生产令牌之外的来路**；无论哪个"环境"，令牌都只存本机 `wb.cfg.v1`，绝不能落进任何提交（红线 5）。

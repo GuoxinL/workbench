@@ -43,7 +43,7 @@
 ### P0（阻断合入）
 
 - [ ] 未绕过 `stores/data.ts` 直接读写 `wb.*` localStorage 键；未绕过 `services/github/*` / `services/sync/*` 直接调 GitHub Contents API（红线 4：脏标记 / 冲突合并 / 事件广播不可绕开）
-- [ ] Token 未以任何形式落库（`manifest.json` / `wb.cfg.v1` 以外位置）、落日志（`console.log`）或硬编码进源码（红线 5）
+- [ ] Token 未以任何形式落库（`kb/*.md` / `todos/*.json` / `images/*` / `wb.cfg.v1` 以外位置）、落日志（`console.log`）或硬编码进源码（红线 5；2026-08-04 起同步不再写 `manifest.json`，索引改由目录树 blob sha 承担）
 - [ ] 用户内容（文章 / 待办）渲染前经 `@milkdown/kit` + `DOMPurify` 转义/净化，未把未转义内容拼进 `innerHTML` / `v-html`
 - [ ] Worker 代理（`proxy/cloudflare-worker.js`）新增转发路径走白名单，未开放任意 URL 中转
 - [ ] 新增持久化字段已同步考虑 LWW 合并逻辑（`services/sync/merge.ts`）与本地落盘（`cleanupTombstones`），否则同步时字段丢失

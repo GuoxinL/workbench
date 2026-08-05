@@ -47,7 +47,7 @@
 | GetApiRoot | proxy | `GET /` | 不带令牌的连通性探测（白名单保留；当前诊断改用 GetRepo 端点探测，见 GetApiRoot 说明） | [proxy/GetApiRoot.md](proxy/GetApiRoot.md) |
 | GetRateLimit | proxy | `GET /rate_limit` | 最轻量的令牌有效性探针，诊断第 3 步「令牌有效性」 | [proxy/GetRateLimit.md](proxy/GetRateLimit.md) |
 | GetRepo | proxy | `GET /repos/{owner}/{repo}` | 仓库元信息 + **写权限前置校验** `permissions.push`，诊断第 2/4 步 | [proxy/GetRepo.md](proxy/GetRepo.md) |
-| GetContents | proxy | `GET /repos/{owner}/{repo}/contents/{path}` | 按路径拉取文件（`kb/<id>.md` / `manifest.json` / `todos/<id>.json` / `images/<sha>.<ext>`），取 base64 内容与乐观锁 `sha`；404 属正常分支 | [proxy/GetContents.md](proxy/GetContents.md) |
+| GetContents | proxy | `GET /repos/{owner}/{repo}/contents/{path}` | 按路径拉取文件（`kb/<id>.md` / `todos/<id>.json` / `images/<sha>.<ext>`）或**列目录**（`kb` / `todos`，取每文件 blob sha 作索引），取 base64 内容与乐观锁 `sha`；404 属正常分支 | [proxy/GetContents.md](proxy/GetContents.md) |
 | PutContents | proxy | `PUT /repos/{owner}/{repo}/contents/{path}` | 全量覆写单文件，`sha` 做 CAS，409/422 冲突由同步引擎退避重试 | [proxy/PutContents.md](proxy/PutContents.md) |
 
 **白名单一致性**：上表 6 条覆盖 `proxy/cloudflare-worker.js:20-25` 的全部 4 条 `ALLOW` 正则（`/rate_limit`、`/repos/:owner/:repo`、`/repos/:owner/:repo/contents/**`、`/`）+ 独立的 OPTIONS 预检分支；`contents` 因读写语义差异拆为两篇。**新增转发路径必须先加进 `ALLOW` 再补文档**（AGENTS.md 安全基线 3）。

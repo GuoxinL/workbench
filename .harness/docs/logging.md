@@ -81,7 +81,7 @@ console\.(log|warn|debug|info)\(
 | 2 | **禁止**新增 `console.log/warn/info/debug` | pre-commit 拦截（§2.1） |
 | 3 | **禁止**在高频路径打日志 | 轮询默认 20s（`engine.ts:179` 夹取 5–300s）、防抖推送 1.5s（`engine.ts:58`）、`change` 事件触发全量重渲染——这些路径加日志会刷屏并掩盖真实错误 |
 | 4 | **禁止**输出完整数据文档 | `wb.data.v1` 含全部文章正文，属用户隐私内容；需要看时在 Console 手动 `localStorage.getItem('wb.data.v1')` 即可，不要写进代码 |
-| 5 | **禁止**为"正常但少见"的分支报错 | 如"远端文件尚未创建"（manifest 404 → 诊断视为「尚未创建，首次同步将写入」，`diagnose.ts:111`）、"两端已一致无需推送"（`engine.ts:123` 本地无领先变更则整轮不写远端）——都是成功路径 |
+| 5 | **禁止**为"正常但少见"的分支报错 | 如"远端文件/目录尚未创建"（`kb/`、`todos/` 目录列表 404 → `listDir` 视为空索引；诊断的遗留 `manifest.json` 404 → 视为「尚未创建，首次同步将写入」，`diagnose.ts:111`）、"两端已一致无需推送"（`engine.ts:123` 本地无领先变更则整轮不写远端）——都是成功路径 |
 | 6 | **限制**静默同步的用户可见反馈 | 轮询/防抖推送走静默路径，失败只点红 chip 不弹 toast；否则断网时每周期弹一次 |
 | 7 | **禁止**在 Worker 里打印请求头或请求体 | 见 §4 风险点 F |
 
@@ -108,7 +108,7 @@ console\.(log|warn|debug|info)\(
 ### 4.2 已建立的正确做法（新增代码照此执行，勿破坏）
 
 - **令牌只判空、不回显**：诊断第 1 步「配置检查」只输出是否填写了仓库/分支/令牌（`diagnose.ts:86-88`），**永远不回显 token 本身，哪怕是脱敏后的前后 4 位**。
-- **令牌不参与同步载荷**：`manifest.json` 只输出轻量索引字段（`version/updatedAt/articles/todos`），`cfg` 结构性隔离在外，因此导出/远端文件天然不带令牌。**新增持久化字段时务必确认没把 cfg 的任何字段掺进来**。
+- **令牌不参与同步载荷**：远端文件（`kb/*.md`、`todos/*.json`、`images/*`）只输出业务字段，`cfg` 结构性隔离在外，因此导出/远端文件天然不带令牌。**新增持久化字段时务必确认没把 cfg 的任何字段掺进来**。
 - **错误消息只用服务端 message**：`testConnection` 取 `data?.message`（`diagnose.ts:68-71`），不回显请求头。
 
 ---
@@ -121,8 +121,8 @@ console\.(log|warn|debug|info)\(
 |------|------|--------|------|
 | **Console** | DevTools → Console | 仅 `console.error` 等少量日志点 + 未捕获异常堆栈 | 日志极少是设计使然，Console 干净 → 未捕获异常一眼可见 |
 | **Network** | DevTools → Network，过滤 `api.github.com` 或代理域名 | 实际最有效的"请求日志"：GET/PUT 的 URL、状态码、耗时、响应体、`x-ratelimit-remaining` / `x-oauth-scopes` 响应头 | ⚠️ 请求头里**有令牌明文**，共享 HAR 文件 / 截图前必须删掉 `Authorization` 行 |
-| **Application → Local Storage** | DevTools → Application → Local Storage | `wb.data.v1`（全量数据）、`wb.cfg.v1`（配置，**含令牌明文，勿截图**）、`wb.manifestSha.v1`（manifest 乐观锁 sha）、`wb.seeded`（示例数据播种标记） | 键的归属见 `architecture.md` §3 / `stores/data.ts` |
-| **诊断面板** | 应用内：`SettingsSheet` → 诊断 | 五步逐项检测：配置检查 → 网络连通 → 令牌有效性 → 仓库访问与写权限 → 数据文件(manifest.json)；失败即中断并给处置建议 | 面向使用者的一等排查入口，**同步类问题先跑它** |
+| **Application → Local Storage** | DevTools → Application → Local Storage | `wb.data.v1`（全量数据）、`wb.cfg.v1`（配置，**含令牌明文，勿截图**）、`wb.syncState.v1`（本地同步基线 `path → blob sha`）、`wb.seeded`（示例数据播种标记） | 键的归属见 `architecture.md` §3 / `stores/data.ts` |
+| **诊断面板** | 应用内：`SettingsSheet` → 诊断 | 五步逐项检测：配置检查 → 网络连通 → 令牌有效性 → 仓库访问与写权限 → 数据文件（探测 `manifest.json`，属**遗留兼容**检查；新仓库无此文件，404 不算失败）；失败即中断并给处置建议 | 面向使用者的一等排查入口，**同步类问题先跑它** |
 | **构建哈希** | DevTools → Network 看 `app.<hash>.js` 等文件名 | 确认浏览器当前跑的是哪次构建产物（Vite 内容哈希，无需 `?v=` 环境变量） | 排查"改了没生效"必看——比对文件名哈希是否为最新构建 |
 
 ### 5.2 Worker 侧（仅在使用了 API 代理时）
@@ -161,7 +161,9 @@ console\.(log|warn|debug|info)\(
 ② 两端跑「诊断」→ 排除网络/令牌/权限
 ③ 看数据仓库 commit 历史 → 确认 A 的改动到底有没有推上去
 ④ 若已推上去：B 端 Application 里看 wb.data.v1 中该 id 的 updatedAt，
-   与远端 manifest.json 比对 → 判断是没拉到，还是拉到了但被 LWW 判定为「本地更新」
+   与远端 kb/<id>.md frontmatter（或 todos/<id>.json）的 updatedAt 比对；
+   再看 B 端 wb.syncState.v1 里该 path 的基线 sha 与远端目录树 sha 是否一致
+   → 判断是没拉到，还是拉到了但被 LWW 判定为「本地更新」
 ⑤ 记录两端配置与各自的 updatedAt，作为归因结论写进 failures.md
 ```
 
@@ -190,9 +192,9 @@ console\.(log|warn|debug|info)\(
 - [ ] 捕获后吞掉的异常是否有 `console.error`？空 catch 块必须有明确注释说明为何可以静默
 - [ ] 是否在轮询 / 防抖推送 / `change` 重渲染等高频路径上加了输出？
 - [ ] 静默同步路径是否误加了 toast？（会导致断网时反复弹窗）
-- [ ] 成功但少见的分支（远端 manifest 不存在、无需推送）是否被误报成错误？（历史 bug 同源）
+- [ ] 成功但少见的分支（远端 `kb/`、`todos/` 目录尚不存在、无需推送）是否被误报成错误？（历史 bug 同源）
 - [ ] 新增外部调用是否同步在 `runDiagnose()` 中补了对应检测步骤？
-- [ ] 新增持久化字段后，`manifest.json` 是否仍不含任何 `cfg` 字段？
+- [ ] 新增持久化字段后，远端文件（`kb/*.md`、`todos/*.json`）是否仍不含任何 `cfg` 字段？
 
 ---
 

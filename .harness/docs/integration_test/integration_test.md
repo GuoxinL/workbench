@@ -5,13 +5,13 @@
 >
 > **与单元测试的边界**（详见 §二.8）：
 > - 单元测试（`.harness/docs/unittest/unittest.md`）：函数 / 模块 / store 级，`fetch` 用 `vi.stubGlobal` 替身，localStorage/IndexedDB 用 jsdom + fake-indexeddb，**不**起真实浏览器、**不**打真实 GitHub API。
-> - 集成测试（本文）：**真实浏览器 UI → `useDataStore` / localStorage + IndexedDB → 同步引擎 →（可选 Worker 代理）→ GitHub Contents API → 真实数据仓库 `kb/<id>.md` + `manifest.json`** 的端到端链路。
+> - 集成测试（本文）：**真实浏览器 UI → `useDataStore` / localStorage + IndexedDB → 同步引擎 →（可选 Worker 代理）→ GitHub Contents API → 真实数据仓库 `kb/<id>.md` + `todos/<id>.json`（目录树每文件 blob sha 索引，无中央 `manifest.json`）** 的端到端链路。
 >
 > **若仓库出现 `.codebuddy/rules/integration_test_*.md` 或同义命名（`it_*.md`），那是权威来源**：本文以摘录 + 链接形式承接。
 > 2026-08-04 核查：仓库**不存在** `.codebuddy/rules/` 目录，故本文即当前基线。
 
-> Source：`src/services/sync/engine.ts`、`src/services/github/diagnose.ts`、`src/services/github/manifest.ts`、`src/stores/data.ts`、`src/router/index.ts`、`src/components/kb/LinksPanel.vue`、`proxy/cloudflare-worker.js`、`vite.config.ts`、`package.json`、`.harness/docs/architecture.md`、AGENTS.md（红线 4/5）
-> Last-verified: 2026-08-04（对应 commit `3c64351`）
+> Source：`src/services/sync/engine.ts`、`src/services/sync/diff.ts`、`src/services/github/listDir.ts`（目录树 blob sha 索引）、`src/services/github/contents.ts`、`src/services/github/diagnose.ts`、`src/services/github/manifest.ts`（仅 @deprecated 遗留读取）、`src/stores/data.ts`、`src/router/index.ts`、`src/components/kb/LinksPanel.vue`、`proxy/cloudflare-worker.js`、`vite.config.ts`、`package.json`、`.harness/docs/architecture.md`、AGENTS.md（红线 4/5）
+> Last-verified: 2026-08-04（对应 commit `3c96921`：去中央 `manifest.json`，改用目录树每文件 blob sha + `wb.syncState.v1`）
 
 ---
 
@@ -37,10 +37,10 @@
 
 | 形态 | 本项目是否适用 | 权重 | 说明 |
 |------|--------------|------|------|
-| **前端 E2E**（UI → 持久化 → 远端） | ✅ 适用 | **主**（手动 / CDP 驱动） | 唯一真实链路，从浏览器 DOM 操作一路验到仓库 `kb/` + `manifest.json` |
+| **前端 E2E**（UI → 持久化 → 远端） | ✅ 适用 | **主**（手动 / CDP 驱动） | 唯一真实链路，从浏览器 DOM 操作一路验到仓库 `kb/` + `todos/`（目录树每文件 blob sha 索引，无中央 `manifest.json`） |
 | **接口级 IT**（GitHub Contents API 往返） | ✅ 适用 | **辅** | 作为 E2E 的**断言手段与环境准备**（curl 读写测试仓校验结果），不单独当作 IT 通过依据 |
 | **代理级 IT**（Cloudflare Worker 白名单） | ✅ 适用 | 辅 | 可脱离浏览器用 curl 直接验白名单 / CORS |
-| 数据库 IT | ❌ 不适用 | — | 无数据库，持久化 = localStorage + IndexedDB + 远端 `kb/<id>.md` + `manifest.json` |
+| 数据库 IT | ❌ 不适用 | — | 无数据库，持久化 = localStorage + IndexedDB + 远端 `kb/<id>.md` + `todos/<id>.json`（索引由目录树 blob sha 现拉） |
 | 消息 / 异步 IT | ❌ 不适用 | — | 无 MQ。异步只有防抖 1.5s 推送 / 轮询（默认 20s，区间 5s–300s），归入 E2E 时序用例 |
 | 多服务链路 IT | ❌ 不适用 | — | 纯客户端单体，无服务间调用（见 `architecture.md` §1、§6） |
 
@@ -54,18 +54,18 @@
 | 环境名称 / 类型 | **无独立测试环境**。IT 跑在「本地 Vite dev server（`npm run dev` → `http://localhost:5173`）+ 专用测试数据仓库」组合上；也可用 Pages 生产站点 + 测试仓（仅验缓存 / PWA 类用例） |
 | 被测前端入口 | `npm run dev` → `http://localhost:5173`（详见 `devops/development.md`）；或 `npm run build && npm run preview` |
 | 远端依赖 | GitHub Contents API `https://api.github.com`（唯一强依赖，见 `relationship.md`） |
-| 数据落点 | **测试专用**私有仓库的 `kb/<id>.md`（每篇/每条一个 Markdown 文件，frontmatter + 正文）+ 根目录 `manifest.json`（轻量索引，不含正文）。**不是**生产的 `GuoxinL/workbench-data`，**也不是**单个 `data/workbench.json`（该结构已随 2026-07-31 重构废弃） |
+| 数据落点 | **测试专用**私有仓库的 `kb/<id>.md`（每篇一个 Markdown 文件，frontmatter + 正文）+ `todos/<id>.json`（每条一个 JSON）；索引由 `kb/` + `todos/` 目录树每文件 blob sha 现拉，**无中央 `manifest.json`**。**不是**生产的 `GuoxinL/workbench-data`，**也不是**单个 `data/workbench.json`（该结构已随 2026-07-31 重构废弃） |
 | 鉴权方式 | 测试专用 Personal Access Token（细粒度，仅授权测试仓，`Contents: Read and write`） |
 | 运行时配置位置 | 浏览器 localStorage `wb.cfg.v1`，经 **`SettingsSheet` 设置抽屉**填写（路由无关——设置是抽屉而非独立页面）；仓库内**无任何环境配置文件** |
 | 数据隔离策略 | 独立仓库 + 独立分支（双重）；多端并发用**两个浏览器 profile / 隐身窗口**隔离 localStorage |
-| 清理策略 | 手动：用例后重置测试仓 `kb/` + `manifest.json`、清空浏览器 localStorage；整轮结束后**撤销测试 PAT** |
+| 清理策略 | 手动：用例后重置测试仓 `kb/` + `todos/`（删除本次 IT 创建的测试文件、确认无遗留 `manifest.json`）、清空浏览器 localStorage；整轮结束后**撤销测试 PAT** |
 | 可选组件 | 自部署 Cloudflare Worker（仅 `IT-PROXY-*` 用例需要，见 `proxy/cloudflare-worker.js`） |
 
 ### 3. 环境隔离硬约束（本项目最容易踩的坑）
 
 | # | 约束 | 原因 |
 |---|------|------|
-| 1 | **必须显式填写测试仓与测试分支，且不得指向生产仓** | 数据落点是 `kb/<id>.md` + `manifest.json`，由 `Config.repo`/`branch` 决定。把 `repo` 指向 `GuoxinL/workbench-data` = **直接写生产数据仓库** |
+| 1 | **必须显式填写测试仓与测试分支，且不得指向生产仓** | 数据落点是 `kb/<id>.md` + `todos/<id>.json`（无中央 `manifest.json`），由 `Config.repo`/`branch` 决定。把 `repo` 指向 `GuoxinL/workbench-data` = **直接写生产数据仓库** |
 | 2 | **禁止用日常使用的 PAT** | IT 会向仓库写真实 commit；专用 token 便于一键撤销、限制爆炸半径 |
 | 3 | 测试仓必须**私有** | 与生产同理；IT 造的假数据同样不该公开 |
 | 4 | 多端场景用独立浏览器 profile，**不要**用同一 profile 的两个标签页 | 同 profile 共享 localStorage，无法真实模拟"两个设备各持一份本地副本" |
@@ -91,10 +91,17 @@ curl -sS -H "Authorization: Bearer $WB_IT_TOKEN" \
   | grep -o '"push":[a-z]*'
 # 期望 "push":true；false 或 404 → 令牌未授权该仓 / 仓库名写错
 
-# (3) 测试仓数据基线（确认 manifest.json 是否存在 / 拿到 sha）
+# (3) 测试仓数据基线（确认 kb/ + todos/ 目录树是否为空、是否有遗留 manifest.json）
 curl -sS -H "Authorization: Bearer $WB_IT_TOKEN" \
+     "https://api.github.com/repos/$WB_IT_REPO/contents/kb?ref=$WB_IT_BRANCH" \
+  | grep -o '"path": *"[^"]*"' || echo "kb/ 为空（IT-SYNC-01 正需要这个状态）"
+curl -sS -H "Authorization: Bearer $WB_IT_TOKEN" \
+     "https://api.github.com/repos/$WB_IT_REPO/contents/todos?ref=$WB_IT_BRANCH" \
+  | grep -o '"path": *"[^"]*"' || echo "todos/ 为空"
+# 遗留兼容检查：确认无残留的 manifest.json（新架构不应出现）
+curl -sS -o /dev/null -w 'legacy-manifest=%{http_code}\n' -H "Authorization: Bearer $WB_IT_TOKEN" \
      "https://api.github.com/repos/$WB_IT_REPO/contents/manifest.json?ref=$WB_IT_BRANCH" \
-  | grep -o '"sha": *"[^"]*"' || echo "manifest.json 尚未创建（IT-SYNC-01 正需要这个状态）"
+  | grep -q '200' && echo "⚠️ 发现遗留 manifest.json，应清理" || echo "无 manifest.json（符合预期）"
 
 # (4) 剩余 API 配额（限流类用例前必查）
 curl -sS -H "Authorization: Bearer $WB_IT_TOKEN" https://api.github.com/rate_limit \
@@ -117,7 +124,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' "$WB_IT_PROXY/rate_limit"
 | `WB_IT_PROXY` | 自部署 Worker 地址 | 仅 `IT-PROXY-*` 用例需要 |
 
 `Config`（`src/types/index.ts`）字段：`enabled` / `repo` / `branch` / `token` / `poll` / `apiBase` / `publicRepo?` / `path`。注意：
-- **`path` 字段当前同步未使用**——数据落点固定在仓库根的 `kb/<id>.md` + `manifest.json`，IT 无需（也不应）依赖 `path` 区分数据。
+- **`path` 字段当前同步未使用**——数据落点固定在仓库根的 `kb/<id>.md` + `todos/<id>.json`（索引由目录树每文件 blob sha 现拉，无中央 `manifest.json`），IT 无需（也不应）依赖 `path` 区分数据。
 - `poll` 轮询秒数，引擎夹取区间 **5–300s**（`<engine.ts>` `MIN_POLL=5000` / `MAX_POLL=300000`）。
 - `apiBase` 可选；为空时默认 `https://api.github.com`。
 
@@ -134,7 +141,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' "$WB_IT_PROXY/rate_limit"
 |---|------|--------------|
 | 1 | **禁止**指向生产资源 | 禁止把 `repo` 指向 `GuoxinL/workbench-data`；统一用专用测试仓 |
 | 2 | **禁止**使用真实日常凭证 | 只用测试专用 PAT |
-| 3 | **禁止**遗留脏数据 | 每条用例自带前置（清 localStorage / 重置远端 `kb/` + `manifest.json`）与收尾 |
+| 3 | **禁止**遗留脏数据 | 每条用例自带前置（清 localStorage / 重置远端 `kb/` + `todos/`，确认无残留 `manifest.json`）与收尾 |
 | 4 | **禁止**用例间共享可变状态 / 依赖执行顺序 | 例外：`IT-MERGE-*` 天然需要"两端"状态，须在用例内自建两端，不得复用上一条的残留 |
 | 5 | **禁止**硬编码仓库名 / 令牌 / 代理地址到文档或脚本 | 一律走 `WB_IT_*` 变量占位 |
 | 6 | **禁止**在浏览器 console 里直接调 `useDataStore` / 引擎造数据后宣布用例通过 | 那是 UT 层的事；IT 必须从**真实入口**（UI 操作 / 定时器 / 可见性事件 / 网络事件）触发。console **只允许用于观测**（读 localStorage、看同步 phase） |
@@ -159,27 +166,27 @@ curl -sS -o /dev/null -w '%{http_code}\n' "$WB_IT_PROXY/rate_limit"
 | 维度 | 本项目检查点 |
 |------|-------------|
 | **输入** | UI 输入（标题 / Markdown / `[[双链]]` / 特殊字符）、配置输入（仓库 / 分支 / 令牌 / 轮询秒数边界 5–300） |
-| **状态** | 三处前置必须明确：① 本地 localStorage（`wb.data.v1` / `wb.cfg.v1` / `wb.manifestSha.v1`）+ IndexedDB ② 远端 `kb/` + `manifest.json`（不存在 / 有基线 / 被改脏）③ 网络（正常 / 离线 / 走代理） |
+| **状态** | 三处前置必须明确：① 本地 localStorage（`wb.data.v1` / `wb.cfg.v1` / `wb.syncState.v1`）+ IndexedDB ② 远端 `kb/` + `todos/`（不存在 / 有基线 / 被改脏；无中央 `manifest.json`）③ 网络（正常 / 离线 / 走代理） |
 | **依赖** | GitHub API 必须真实；限流与网络异常允许用 DevTools 模拟（须标注，见 §二.6） |
-| **断言** | 不止看 UI toast，还要断言**副作用**：远端 commit 是否产生、`kb/<id>.md` + `manifest.json` 内容、同步 phase 状态（本地模式 / 同步中 / 已同步 / 同步失败）、另一端是否收敛 |
+| **断言** | 不止看 UI toast，还要断言**副作用**：远端 commit 是否产生、`kb/<id>.md` + `todos/<id>.json` 内容（且无 `manifest.json`）、同步 phase 状态（本地模式 / 同步中 / 已同步 / 同步失败）、另一端是否收敛 |
 
 ### 4. 手动集成测试检查清单（**核心产出**）
 
 > 用法：复制本节到 `06-it.md`，逐条勾选并补「实际结果 / 证据」。
-> 通用前置（每条用例开始前）：dev server 已起 → 打开目标浏览器 profile → `SettingsSheet` 确认指向**测试仓** → 按用例要求准备 localStorage 与远端 `kb/` + `manifest.json`。
+> 通用前置（每条用例开始前）：dev server 已起 → 打开目标浏览器 profile → `SettingsSheet` 确认指向**测试仓** → 按用例要求准备 localStorage 与远端 `kb/` + `todos/`（确认无残留 `manifest.json`）。
 > 「端 A / 端 B」= 两个独立浏览器 profile（或一台电脑 + 一部手机）。
 
 #### A. 同步往返（IT-SYNC）
 
 - [ ] **IT-SYNC-01 首次同步自动创建远端数据文件**
-  - 前置：远端测试仓 `manifest.json` 不存在（§一.4 检查 3 返回未创建）；本地有若干待办 / 文章
+  - 前置：远端测试仓 `kb/` + `todos/` 目录树为空、且无遗留 `manifest.json`（§一.4 检查 3 返回空）；本地有若干待办 / 文章
   - 步骤：`SettingsSheet` → 填测试仓 / 分支 / 测试 PAT → 开启「启用同步」→ 保存并同步
-  - 断言：同步 phase 经「同步中」→「已同步」；测试仓新增 1 个（或数个）commit；仓库根出现 `manifest.json`，`kb/` 目录出现对应 `<id>.md`；`manifest.json` 只含轻量索引字段（version / updatedAt / articles / todos），**绝不含 token / apiBase / cfg**（见 `manifest.ts`）
+  - 断言：同步 phase 经「同步中」→「已同步」；测试仓新增 1 个（或数个）commit；`kb/` 目录出现对应 `<id>.md`、`todos/` 出现对应 `<id>.json`；**仓库根不出现 `manifest.json`**；远端文件（`kb/*.md` frontmatter / `todos/*.json`）**绝不含 token / apiBase / cfg**（红线 5）
 
 - [ ] **IT-SYNC-02 本地新增待办经防抖推送到远端**
   - 前置：同步已启用且 phase 为「已同步」
   - 步骤：待办视图输入标题 → 回车 → 静置 ≥2s（防抖 `PUSH_DEBOUNCE=1500ms`，`engine.ts:58`）
-  - 断言：phase 经「同步中」→「已同步」；测试仓新增 commit，`kb/<id>.md` 或 `manifest.json` 出现该 todo；`wb.manifestSha.v1` 被刷新（`stores/data.ts` 写盘）
+  - 断言：phase 经「同步中」→「已同步」；测试仓新增 commit，`kb/<id>.md` 或 `todos/<id>.json` 出现该 todo；`wb.syncState.v1` 被写入（path→blob sha 基线，`stores/data.ts` 写盘），**且无 `manifest.json` 产生**
 
 - [ ] **IT-SYNC-03 远端变更经轮询拉取到本端**
   - 前置：端 A、端 B 均已配置同步；轮询间隔设为 5s（下限，`engine.ts:61`）
@@ -217,9 +224,9 @@ curl -sS -o /dev/null -w '%{http_code}\n' "$WB_IT_PROXY/rate_limit"
   - 断言：DevTools Network 中可见某端的 `PUT` 因远端 sha 变化被拒（冲突），随后 `RETRY_BACKOFF×attempt`（350ms、700ms…）退避重新拉取再 `PUT`，最终成功（≤`MAX_RETRY=3` 次，`engine.ts:59-60,142-149`）；两条数据**都**存在于远端；无「冲突，已放弃本次同步」
 
 - [ ] **IT-MERGE-05 软删除墓碑在本地被清理**
-  - 前置：手工编辑远端，塞入一条 `deleted:true` 且 `updatedAt` 较早的记录（经 `manifest.json` 的 `ManifestEntry.deleted`）
+  - 前置：手工编辑远端，塞入一条 `deleted:true` 且 `updatedAt` 较早的 `todos/<id>.json`（或 `kb/<id>.md` frontmatter 的 `deleted` 字段）
   - 步骤：本端拉取合并 → 制造任意本地改动触发一次推送
-  - 断言：新推上去的 `manifest.json` 中该墓碑记录已消失（`stores/data.ts` 写 `wb.data.v1` 时经 `cleanupTombstones` 清理）；其它记录不受影响
+  - 断言：远端该 `todos/<id>.json` 中墓碑记录已消失（经 `cleanupTombstones` 清理后重新 PUT）；其它记录不受影响；全程不出现 `manifest.json`
   - 备注：具体保留期限以 `cleanupTombstones` 实现为准，文档不写死天数
 
 #### C. 异常与降级（IT-FAIL）
@@ -247,9 +254,9 @@ curl -sS -o /dev/null -w '%{http_code}\n' "$WB_IT_PROXY/rate_limit"
   - 断言：报网络类文案（code `network`：`无法连接 api.github.com…请在「API 代理基址」填入中转地址`，或 12s 超时「请求超时（12s 无响应）」，`diagnose.ts:58,64-65`）；**本地编辑仍完全可用**，phase 保持「同步失败」/「本地模式」；恢复 Online 后自动重同步并转绿
 
 - [ ] **IT-FAIL-06 远端数据被写坏**
-  - 前置：手工把远端 `manifest.json` 内容改成非法 JSON（如删掉一个 `}`）
+  - 前置：手工把远端某个 `kb/<id>.md` 的 frontmatter 改成非法（如删掉一个 `}` 使 YAML 解析失败），或把某个 `todos/<id>.json` 改成非法 JSON
   - 步骤：触发同步
-  - 断言：解析失败有友好提示；**本地数据未被清空 / 未被覆盖**
+  - 断言：解析/校验失败有友好提示（单条损坏仅丢弃该条，不污染整轮 LWW 合并）；**本地数据未被清空 / 未被覆盖**；不出现 `manifest.json`
 
 - [ ] **IT-FAIL-07 未配置或关闭同步 → 本地模式功能完整**
   - 步骤：`SettingsSheet` 关闭「启用同步」并保存 → 正常使用待办 / 文章 / LinksPanel 关系图
@@ -280,7 +287,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' "$WB_IT_PROXY/rate_limit"
 - [ ] **IT-VIEW-01 空本地拉取远端后列表一致**
   - 前置：端 B 清空全部 localStorage（含 `wb.seeded`，否则会塞示例数据，`stores/data.ts`）
   - 步骤：配置同步 → 首次拉取
-  - 断言：待办 / 文章条数与远端 `manifest.json` 中 `deleted:false` 的记录数**逐一相等**；顶部统计数字一致
+  - 断言：本地待办 / 文章条数与远端 `todos/` 目录中 `deleted:false` 的 json 条数、`kb/` 中存活 md 数**逐一相等**；顶部统计数字一致；远端无 `manifest.json`
 
 - [ ] **IT-VIEW-02 跨端双向链接与反链正确**
   - 步骤：端 A 新建文章「甲」，正文含 `[[乙]]`，并新建文章「乙」→ 同步 → 端 B 拉取
@@ -324,7 +331,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' "$WB_IT_PROXY/rate_limit"
 | **测试仓 commit SHA + 提交时间** | 测试仓 commits 列表；commit message 形如 `workbench: sync ...` |
 | **DevTools Network 记录** | 请求 URL（脱去 token）、HTTP 状态码、`x-ratelimit-remaining` 响应头 |
 | **诊断五步输出** | `SettingsSheet`「诊断」按钮的逐步结果文本（`diagnose.ts:83-128`：配置检查 / 网络连通 / 令牌有效性 / 仓库访问与写权限 / 数据文件） |
-| 状态快照 | 顶栏同步 phase 文案（本地模式 / 同步中 / 已同步 / 同步失败）、`localStorage['wb.data.v1']` 与 `wb.manifestSha.v1` |
+| 状态快照 | 顶栏同步 phase 文案（本地模式 / 同步中 / 已同步 / 同步失败）、`localStorage['wb.data.v1']` 与 `wb.syncState.v1`（path→sha 基线） |
 
 ### 6. Mock / 桩策略
 
@@ -334,7 +341,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' "$WB_IT_PROXY/rate_limit"
 | Worker 代理 | 真实自部署实例；无实例时 `IT-PROXY-*` 整组标 N/A，不得伪造 |
 | 网络异常 / 超时 | 用 DevTools **Offline / 限速 / 请求拦截**制造，属真实浏览器行为，可接受 |
 | 限流 403、异常状态码 | 用 DevTools **Local Overrides** 改写响应；**必须**在用例结果中标注「模拟」 |
-| 时间（墓碑等） | 不改系统时钟；改**数据**（构造远端 `manifest.json` 中的旧 `updatedAt`），见 IT-MERGE-05 |
+| 时间（墓碑等） | 不改系统时钟；改**数据**（构造远端 `kb/<id>.md` / `todos/<id>.json` 中的旧 `updatedAt`），见 IT-MERGE-05 |
 | 本地存储 | 不 mock；直接用浏览器 profile / 隐身窗口做隔离 |
 
 ### 7. 与项目 rules 承接
@@ -356,7 +363,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' "$WB_IT_PROXY/rate_limit"
 | 顶栏 phase 状态机 / toast / `SettingsSheet` 交互 | ❌ | ✅ |
 | 跨端收敛、commit 是否产生、代理白名单 | ❌ | ✅ |
 
-> 简记：**UT 管"函数算得对不对"，IT 管"从点击到仓库里那个 `kb/<id>.md` + `manifest.json` 对不对"。**
+> 简记：**UT 管"函数算得对不对"，IT 管"从点击到仓库里那个 `kb/<id>.md` + `todos/<id>.json`（无中央 `manifest.json`）对不对"。**
 
 ---
 
@@ -380,7 +387,7 @@ npm run dev          # → http://localhost:5173
 
 - 调用 `web-access` 技能，经其 CDP 代理（默认 `localhost:3456`）打开 `http://localhost:5173`；
 - 新建浏览器标签后，标签 id 持久化在 `/tmp/wb_newtab.txt`，后续步骤复用同一标签；
-- 按 §二.4 清单逐条：用 CDP 在 `SettingsSheet` 填写测试仓/分支/token → 触发同步 → 读取 `localStorage`（page-context `JSON.parse(localStorage.getItem('wb.data.v1'))`）与 phase → 用 page-context `fetch` 直连 GitHub API 校验远端 `manifest.json` / `kb/`；
+- 按 §二.4 清单逐条：用 CDP 在 `SettingsSheet` 填写测试仓/分支/token → 触发同步 → 读取 `localStorage`（page-context `JSON.parse(localStorage.getItem('wb.data.v1'))`）与 phase → 用 page-context `fetch` 直连 GitHub API 校验远端 `kb/` + `todos/` 目录树（确认无 `manifest.json`）；
 - 每个写操作用例务必先确认 `wb.cfg.v1` 的 `repo` 是测试仓（避免误写生产）。
 
 > **不存在** `make it` / `npm run test:e2e` / `go test -tags=integration` 等命令——项目无 E2E runner（§一.0）。
@@ -388,24 +395,41 @@ npm run dev          # → http://localhost:5173
 ### 2. 环境准备与清理片段
 
 ```bash
-# 重置远端测试仓 manifest.json 为空基线（先取 sha，再 PUT 覆盖）
-SHA=$(curl -sS -H "Authorization: Bearer $WB_IT_TOKEN" \
-  "https://api.github.com/repos/$WB_IT_REPO/contents/manifest.json?ref=$WB_IT_BRANCH" \
-  | sed -n 's/.*"sha": *"\([^"]*\)".*/\1/p' | head -1)
-BODY=$(printf '{"version":1,"updatedAt":0,"articles":{},"todos":{}}' | base64 | tr -d '\n')
-curl -sS -X PUT -H "Authorization: Bearer $WB_IT_TOKEN" \
-  -H 'Accept: application/vnd.github+json' -H 'Content-Type: application/json' \
-  "https://api.github.com/repos/$WB_IT_REPO/contents/manifest.json" \
-  -d "{\"message\":\"it: reset baseline\",\"content\":\"$BODY\",\"branch\":\"$WB_IT_BRANCH\",\"sha\":\"$SHA\"}" \
-  -o /dev/null -w 'reset=%{http_code}\n'
-# 同时清理 kb/ 目录下的测试文件（删除本次 IT 创建的所有 kb/<id>.md）
+# 重置远端测试仓：删除 kb/ + todos/ 下全部测试文件，并确认无遗留 manifest.json
+for DIR in kb todos; do
+  for P in $(curl -sS -H "Authorization: Bearer $WB_IT_TOKEN" \
+       "https://api.github.com/repos/$WB_IT_REPO/contents/$DIR?ref=$WB_IT_BRANCH" \
+       | grep -o '"path": *"[^"]*"' | sed -n 's/.*"path": *"\([^"]*\)".*/\1/p'); do
+    SHA=$(curl -sS -H "Authorization: Bearer $WB_IT_TOKEN" \
+       "https://api.github.com/repos/$WB_IT_REPO/contents/$P?ref=$WB_IT_BRANCH" \
+       | sed -n 's/.*"sha": *"\([^"]*\)".*/\1/p' | head -1)
+    [ -n "$SHA" ] && curl -sS -X DELETE -H "Authorization: Bearer $WB_IT_TOKEN" \
+       -H 'Accept: application/vnd.github+json' -H 'Content-Type: application/json' \
+       "https://api.github.com/repos/$WB_IT_REPO/contents/$P" \
+       -d "{\"message\":\"it: reset baseline\",\"branch\":\"$WB_IT_BRANCH\",\"sha\":\"$SHA\"}" \
+       -o /dev/null -w "del $P=%{http_code}\n"
+  done
+done
+# 若有遗留 manifest.json 也一并删除
+LEGACY=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $WB_IT_TOKEN" \
+  "https://api.github.com/repos/$WB_IT_REPO/contents/manifest.json?ref=$WB_IT_BRANCH")
+if [ "$LEGACY" = "200" ]; then
+  SHA=$(curl -sS -H "Authorization: Bearer $WB_IT_TOKEN" \
+    "https://api.github.com/repos/$WB_IT_REPO/contents/manifest.json?ref=$WB_IT_BRANCH" \
+    | sed -n 's/.*"sha": *"\([^"]*\)".*/\1/p' | head -1)
+  curl -sS -X DELETE -H "Authorization: Bearer $WB_IT_TOKEN" \
+    -H 'Accept: application/vnd.github+json' -H 'Content-Type: application/json' \
+    "https://api.github.com/repos/$WB_IT_REPO/contents/manifest.json" \
+    -d "{\"message\":\"it: drop legacy manifest\",\"branch\":\"$WB_IT_BRANCH\",\"sha\":\"$SHA\"}" \
+    -o /dev/null -w 'del manifest.json=%{http_code}\n'
+fi
 ```
 
 浏览器侧清理（DevTools Console，仅用于**准备 / 清理**，不作为用例步骤）：
 
 ```js
 // 清空本应用全部本地状态（含示例数据种子标记），随后刷新页面
-['wb.data.v1','wb.cfg.v1','wb.manifestSha.v1','wb.seeded']
+['wb.data.v1','wb.cfg.v1','wb.syncState.v1','wb.seeded']
   .forEach(k => localStorage.removeItem(k));
 ```
 
@@ -430,8 +454,8 @@ curl -sS -X PUT -H "Authorization: Bearer $WB_IT_TOKEN" \
 用例失败
   → SettingsSheet「诊断」跑五步，定位断点（配置 / 网络连通 / 令牌有效性 / 仓库写权限 / 数据文件）
   → DevTools Network：看实际请求 URL（是否走代理）、方法、状态码、x-ratelimit-remaining
-  → 测试仓 commits / manifest.json / kb/：确认这次操作到底有没有产生 commit、内容对不对
-  → localStorage：对比 wb.data.v1（记录级 updatedAt / deleted）与 wb.manifestSha.v1
+  → 测试仓 commits / kb/ + todos/：确认这次操作到底有没有产生 commit、内容对不对（且无 `manifest.json`）
+  → localStorage：对比 wb.data.v1（记录级 updatedAt / deleted）与 wb.syncState.v1（path→sha 基线）
   → 归因到模块：视图层(kb) / 数据层(stores/data) / 同步层(sync/engine) / GitHub 层(github/*) / 代理(worker)
   → 修复后重跑该条用例 + 同组回归
 ```

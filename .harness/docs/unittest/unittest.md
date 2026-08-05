@@ -7,7 +7,7 @@
 >
 > **与集成测试的边界**（详见 `integration_test/integration_test.md`）：
 > - 单元测试（本文）：**函数 / 模块 / store 级**，被测对象是 ES Module 导出的纯函数、`@/services/*` 逻辑、`@/stores/data` 状态机；`fetch` 一律 `vi.stubGlobal` 替身，`localStorage`/`IndexedDB` 用真实内存实现（jsdom + fake-indexeddb），**不**起真实浏览器、**不**打真实 GitHub API。
-> - 集成测试（`integration_test/integration_test.md`）：用 `web-access` 技能驱动真实浏览器（CDP）→ 真实 store/localStorage/IndexedDB → 真实 GitHub Contents API → 真实数据仓库（`kb/<id>.md` + `manifest.json`）的**端到端链路**。
+> - 集成测试（`integration_test/integration_test.md`）：用 `web-access` 技能驱动真实浏览器（CDP）→ 真实 store/localStorage/IndexedDB → 真实 GitHub Contents API → 真实数据仓库（`kb/<id>.md` + `todos/<id>.json`，目录树每文件 blob sha 索引，无中央 `manifest.json`）的**端到端链路**。
 >
 > **若仓库出现 `.codebuddy/rules/unittest_*.md`，那是权威来源**：本文以承接 + 链接形式呈现，不另起冲突。
 > 2026-08-04 核查：`ls .codebuddy/rules/` 不存在该目录，故本文即当前基线。

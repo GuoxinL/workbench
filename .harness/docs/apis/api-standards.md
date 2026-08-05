@@ -11,7 +11,7 @@
 本文件记录**本项目真实存在的协议约定**，不是通用 API 设计规范的模板。适用对象只有两类：
 
 1. **`proxy/cloudflare-worker.js`** —— 唯一对外暴露 HTTP 端点的组件（可选自部署代理）；
-2. **`src/services/github/*`** —— 作为**调用方**消费 GitHub Contents API 的封装层（`client.ts` 通用请求、`repoFile.ts` 单文件读写、`contents.ts` 索引驱动同步、`manifest.ts` 索引、`diagnose.ts` 五步诊断），以及驱动同步的 `src/services/sync/*`（`engine.ts` 编排、`merge.ts` LWW 合并）。
+2. **`src/services/github/*`** —— 作为**调用方**消费 GitHub Contents API 的封装层（`client.ts` 通用请求、`repoFile.ts` 单文件读写、`contents.ts` 索引驱动同步、`listDir.ts` 目录树 blob sha 索引、`blobSha.ts` 本地 blob sha 计算、`diagnose.ts` 五步诊断；`manifest.ts` 已 `@deprecated`，仅只读兼容遗留 `manifest.json`），以及驱动同步的 `src/services/sync/*`（`engine.ts` 编排、`diff.ts` 三态判定、`merge.ts` LWW 合并）。
 
 本项目**无业务 API、无 IDL、无代码生成、无版本前缀、无统一响应包装**（`code/message/data/trace_id` 这类结构在本项目**不存在**）。任何"新增接口"实质是**在代理白名单里放行一条新的 GitHub API 路径**。接口契约以本目录文档为准，由代码与文档手工同步（本项目采用 Vite 构建流水线，但接口仍不自动生成）。
 
@@ -203,8 +203,8 @@ const ALLOW_ORIGINS = ['https://guoxinl.github.io'];   // proxy/cloudflare-worke
 |---------|--------|------|
 | `kb/<slug>.md` | `contents.pushRemote`（`contents.ts:111-195`） | 单篇文章：YAML frontmatter（`id/title/createdAt/updatedAt/deleted/fromTodo/tags/publish`）+ Markdown 正文 |
 | `todos/<id>.json` | 同上 | 单条待办 JSON，经 Zod `TodoSchema` 校验（`contents.ts:53-75`） |
-| `manifest.json` | `manifest.putManifest`（`manifest.ts:72`） | 轻量索引：各文件的 `sha` / `updatedAt` / `deleted` 墓碑，作为同步乐观锁与差异比对基线 |
 | `images/<sha>.<ext>` | `contents.pushImage`（`contents.ts:209`） | 图片二进制，key 由内容 SHA-256 决定，幂等去重 |
+| ~~`manifest.json`~~ | **已废弃，无生产者** | 旧架构曾由中央索引承载各文件 `sha`/`updatedAt`/墓碑；**2026-08-04 起同步链路不再写入**，改由现拉 `kb/`、`todos/` 目录树的每文件 blob sha（`listDir.fetchIndex`）+ 本地基线 `wb.syncState.v1` 取代（见 [GetContents.md](proxy/GetContents.md) / [PutContents.md](proxy/PutContents.md)）。`manifest.ts` 仅保留 `@deprecated` 的 `getManifest` 只读兼容既有仓库的遗留文件 |
 
 **本地双重存储**（`src/stores/data.ts`）：
 
@@ -212,16 +212,16 @@ const ALLOW_ORIGINS = ['https://guoxinl.github.io'];   // proxy/cloudflare-worke
 |----|------|
 | `wb.data.v1` | 即时加载层快照（零配置启动即可用）；结构化内容另存 IndexedDB |
 | `wb.cfg.v1` | 配置项（`repo` / `token` / `branch` / `apiBase` / `publicRepo` / `poll` 等），**含 token，绝不进入数据文档库** |
-| `wb.manifestSha.v1` | 上次成功同步后 `manifest.json` 的 blob sha，供下次推送做乐观锁 |
+| `wb.syncState.v1` | 本地同步基线：`path → blob sha` 字典（如 `{"kb/1.md":"abc…","todos/2.json":"def…"}`），供下轮 `planSync` 做三态判定（替代旧的单值 `wb.manifestSha.v1`） |
 
 | 约定 | 说明 |
 |------|------|
 | 时间 | 统一 **Unix 毫秒时间戳**（`Date.now()`），非 ISO 字符串 |
 | ID | 字符串，由 slug 工具生成（`src/lib/slug.ts`），非数字，无精度问题 |
-| 布尔 | `true` / `false`，软删除标记为 `deleted: true`，以**墓碑**形式经 manifest 传播 |
+| 布尔 | `true` / `false`，软删除标记为 `deleted: true`，以**墓碑**形式经逐条 LWW 传播（本地墓碑对应远端文件的 DELETE，见 `sync/diff.ts` 判定 G） |
 | 传输编码 | 文件内容经 **UTF-8 安全 base64** 经 Contents API 传输（`repoFile.toBase64`/`fromBase64`，`repoFile.ts:19-31`）；图片二进制同样 base64 直传（`putFileBase64`） |
-| 合并语义 | 逐文件 **LWW**（按 `id` 主键比 `updatedAt`，相等保留本地）；索引驱动 `planDiff`（`manifest.ts:37`）先比 `updatedAt` 定差异 id，再按 id 差分 GET/PUT；正文合并 `mergeArticles`/`mergeTodos`（`merge.ts:39-46`） |
-| 乐观锁 | 全部写操作带远端 blob `sha` 做 CAS；冲突（`409`/`422`）由同步引擎退避重试（§6） |
+| 合并语义 | 逐文件 **LWW**（按 `id` 主键比 `updatedAt`，相等保留本地）；索引驱动 `planSync`（`sync/diff.ts`）按 blob sha 三态（远端目录树 sha / 本地基线 sha / 本地内容 sha）定 pull/push/delete/conflict，再按 id 差分 GET/PUT；正文合并 `mergeArticles`/`mergeTodos`（`merge.ts:39-46`） |
+| 乐观锁 | 全部写操作带远端 blob `sha` 做 CAS，sha 取自**本轮刚拉到的目录树**（`treeShaByPath`，`contents.ts:126,152,174,195`）而非任何中央索引文件；冲突（`409`/`422`）由同步引擎退避重试（§6） |
 | 兼容性 | 新增持久化字段必须同改三处：`parseFrontmatter`/`serializeFrontmatter`（`src/lib/markdown/frontmatter`）正确序列化、Zod schema 补默认值、`mergeEntities` 的 LWW 语义成立 |
 
 ---
@@ -229,8 +229,8 @@ const ALLOW_ORIGINS = ['https://guoxinl.github.io'];   // proxy/cloudflare-worke
 ## 8. 文档与验证
 
 - **接口文档**：本目录，与代码手工同步；每篇必须有 `Source:` + `Last-verified:` 脚注。
-- **契约测试**：`src/services/github/__tests__/` 下的 Vitest 单测覆盖 `client`/`repoFile`/`manifest`/`contents`/`diagnose`；`src/services/sync/__tests__/` 覆盖 `engine`/`merge`。运行 `npm test`。
-- **人工验证手段**：工作台「设置 → 诊断」的**五步链路**（`diagnose.runDiagnose`，`diagnose.ts:83-128`）——配置检查 → 网络连通 → 令牌有效性 → 仓库访问与写权限 → 数据文件（`manifest.json` 是否存在）——失败即在具体步骤中断并给出处置建议。这是本项目**唯一**的接口连通性验证工具。
+- **契约测试**：`src/services/github/__tests__/` 下的 Vitest 单测覆盖 `client`/`repoFile`/`listDir`/`blobSha`/`contents`/`images`/`diagnose`（`manifest` 测试仅覆盖已废弃的兼容函数）；`src/services/sync/__tests__/` 覆盖 `engine`/`diff`/`merge`/`serialize`。运行 `npm test`。
+- **人工验证手段**：工作台「设置 → 诊断」的**五步链路**（`diagnose.runDiagnose`，`diagnose.ts:83-128`）——配置检查 → 网络连通 → 令牌有效性 → 仓库访问与写权限 → 数据文件（`GET contents/manifest.json`，**遗留兼容检查**：新仓库已不写该文件，404 视为「尚未创建/首次同步」，不算失败，`diagnose.ts:109-112`）——失败即在具体步骤中断并给出处置建议。这是本项目**唯一**的接口连通性验证工具。
 - **代理侧验证**：Worker 无 wrangler 自动化测试；部署后需人工用诊断工具验证连通性与 CORS。
 
 ---

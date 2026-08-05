@@ -100,7 +100,7 @@ npm run test:watch       # vitest 监听模式
 
 | # | 配置载体                        | 位置                         | 生效范围           | 是否入库                                                                     |
 |---|---------------------------------|------------------------------|--------------------|------------------------------------------------------------------------------|
-| 1 | 浏览器 localStorage `wb.cfg.v1` | 使用者本机浏览器             | 运行时同步行为     | ❌ 永不上传（序列化只在远端写 `kb/<id>.md` + `manifest.json`，绝不带 token） |
+| 1 | 浏览器 localStorage `wb.cfg.v1` | 使用者本机浏览器             | 运行时同步行为     | ❌ 永不上传（序列化只在远端写 `kb/<id>.md` + `todos/<id>.json` + `images/*`，不再写 manifest.json，绝不带 token） |
 | 2 | Worker 源码顶部常量             | `proxy/cloudflare-worker.js` | 可选代理的转发策略 | ✅ 在代码仓库里（不含任何密钥）                                              |
 
 Shell 环境变量仅本地 git 钩子（`scripts/*.sh`）读取，非运行期配置。
@@ -119,9 +119,9 @@ Shell 环境变量仅本地 git 钩子（`scripts/*.sh`）读取，非运行期�
 | `apiBase` | API 代理地址 | `''` | 留空走 `https://api.github.com`；填了则所有请求改走该地址 |
 | `publicRepo` | 公开镜像库（可选） | `''` | 用于分享只读视图；`diagnose.defaultPublicRepo` 默认推导为 `<owner>/workbench-public` |
 
-> ⚠️ 重构后**不再有 `path` 字段**（旧 `data/workbench.json` 已被 `kb/<id>.md` + `manifest.json` 取代）；同步数据载体由引擎按 id 组织，无需手工指定路径。
+> ⚠️ 重构后**不再有 `path` 字段**（旧 `data/workbench.json` 已被 `kb/<id>.md` + `todos/<id>.json` 取代）；同步数据载体由引擎按 id 组织，无需手工指定路径。
 
-**其它 localStorage 键**（非配置，仅供排障时识别）：`wb.data.v1`（主数据快照，即时加载层）、`wb.cfg.v1`（配置，含 token）、`wb.manifestSha.v1`（远端 manifest 乐观锁 sha）。
+**其它 localStorage 键**（非配置，仅供排障时识别）：`wb.data.v1`（主数据快照，即时加载层）、`wb.cfg.v1`（配置，含 token）、`wb.syncState.v1`（本地同步基线，`path → blob sha` 字典；替代旧的 `wb.manifestSha.v1`）。
 
 > ⚠️ 读写这些键**只能经 `src/stores/data.ts`**（AGENTS.md 红线 4）；调试时手工在 DevTools 里改属于一次性排障，改完请刷新页面让 store 重新加载。
 

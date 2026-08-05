@@ -23,7 +23,7 @@
 | 无服务端业务逻辑 | 全仓库无 `server.js` / `main.go`；唯一「后端」是可选 Cloudflare Worker 代理（`proxy/cloudflare-worker.js`），只做 GitHub API 白名单透传，不含业务逻辑、不存储数据 |
 | 标准构建流水线 | 有 `package.json` / `node_modules` / `vite.config.ts`；`npm run build` = `vue-tsc --noEmit && vite build`，产物为 `dist/`（带内容 hash 的 `assets/index-*.js`） |
 | 模块化 | ES Module + Vue SFC；`src/` 下按 `stores / services / views / components / lib / composables / router` 分层（详见 §3） |
-| 持久化 | 浏览器 **localStorage（`wb.data.v1` 即时加载层）+ IndexedDB（结构化存储层 `services/db`）** 双重本地存储；远端经 GitHub Contents API 同步到 `kb/<id>.md` + `manifest.json` |
+| 持久化 | 浏览器 **localStorage（`wb.data.v1` 即时加载层）+ IndexedDB（结构化存储层 `services/db`）** 双重本地存储；远端经 GitHub Contents API 同步到 `kb/<id>.md`（文章）+ `todos/<id>.json`（待办），索引由 `kb/` 与 `todos/` 目录树的**每文件 blob sha** 现拉现用，无中央 `manifest.json` |
 
 代码规模（`.harness/docs/`、`scripts/`、`proxy/` 之外的应用代码，约 60+ 个 `.ts`/`.vue` 文件）：入口 `src/main.ts`、`src/App.vue`；状态层 `src/stores/data.ts`；服务层 `src/services/**`；视图 `src/views/*`；组件 `src/components/**`；纯函数库 `src/lib/**`；组合式 `src/composables/**`。
 
@@ -35,12 +35,12 @@
 flowchart LR
     User["使用者<br/>（桌面 / 移动浏览器）"]
     App["个人工作台<br/>Vue3 SPA（dist/ 静态产物）"]
-    LS[("localStorage<br/>wb.data.v1 / wb.cfg.v1<br/>wb.manifestSha.v1")]
+    LS[("localStorage<br/>wb.data.v1 / wb.cfg.v1<br/>wb.syncState.v1(path→sha)")]
     IDB[("IndexedDB<br/>services/db 结构化存储<br/>+ 图片 store")]
     Pages["GitHub Pages<br/>GuoxinL/workbench（公开）"]
     Worker["Cloudflare Worker<br/>proxy/cloudflare-worker.js（可选自部署）"]
     GH["GitHub Contents API<br/>api.github.com"]
-    DataRepo[("数据仓库<br/>GuoxinL/workbench-data（私有）<br/>kb/&lt;id&gt;.md + manifest.json")]
+    DataRepo[("数据仓库<br/>GuoxinL/workbench-data（私有）<br/>kb/&lt;id&gt;.md + todos/&lt;id&gt;.json（目录树索引，无中央 manifest.json）")]
 
     User -->|"HTTPS 加载静态资源"| Pages
     Pages -->|"交付 HTML/JS/CSS"| App
@@ -57,13 +57,13 @@ flowchart LR
 |-------------|---------|---------|------|
 | 使用者 | 浏览器 DOM 事件 | 双向 | 唯一角色，无多用户/无管理员概念（自用工具） |
 | GitHub Pages | HTTPS 静态托管 | 出（交付代码） | 部署**代码仓库** `GuoxinL/workbench`，必须公开；构建产物 `dist/` 经 GitHub Actions 上传，`.nojekyll` 关闭 Jekyll |
-| GitHub Contents API | HTTPS REST，`Authorization: Bearer <PAT>` | 双向 | `GET /repos/{owner}/{repo}/contents/manifest.json?ref={branch}` 拉轻量索引；`GET/PUT /repos/{owner}/{repo}/contents/kb/{id}.md` 按 id 差分读写正文；`PUT .../images/{hash}.{ext}` 推送图片（图云同步模式） |
-| 数据仓库 `workbench-data` | 经 Contents API 间接访问 | 双向 | 文章正文 `kb/<id>.md`（带 frontmatter）+ 轻量索引 `manifest.json`；**必须私有**；每次推送产生一次 commit |
+| GitHub Contents API | HTTPS REST，`Authorization: Bearer <PAT>` | 双向 | `GET /repos/{owner}/{repo}/contents/kb?ref={branch}` + `.../contents/todos` 列目录树拿每文件 `blob sha`（替代中央 `manifest.json` 索引）；`GET/PUT /repos/{owner}/{repo}/contents/kb/{id}.md` 与 `.../todos/{id}.json` 按 id 差分读写；`PUT .../images/{hash}.{ext}` 推送图片（图云同步模式） |
+| 数据仓库 `workbench-data` | 经 Contents API 间接访问 | 双向 | 文章正文 `kb/<id>.md`（带 frontmatter）+ 待办 `todos/<id>.json`；索引由目录树每文件 blob sha 现拉现用，**无中央 `manifest.json`**；**必须私有**；每次推送产生一次 commit |
 | Cloudflare Worker 代理 | HTTPS REST | 双向（透传） | **可选**，仅在使用者网络访问不了 `api.github.com` 时启用；由使用者自行部署到自己账号 |
-| localStorage | 同步 API | 双向 | `wb.data.v1` 即时加载层（零配置启动契约）；`wb.cfg.v1` 配置（含令牌）；`wb.manifestSha.v1` manifest 乐观锁 sha |
+| localStorage | 同步 API | 双向 | `wb.data.v1` 即时加载层（零配置启动契约）；`wb.cfg.v1` 配置（含令牌）；`wb.syncState.v1` 本地同步基线（`path→sha`，乐观锁 sha 取自目录树） |
 | IndexedDB | 异步 API | 双向 | `services/db` 结构化存储（单实体 + 分页索引）+ 图片 store（图云极简模式） |
 
-> ⚠️ **与旧架构的关键差异**：早期版本把整份数据塞进单一 `data/workbench.json` 并靠 `bump-version.sh` 刷新 `?v=` 参数破缓存。现重构为：**远端按文章拆分成 `kb/<id>.md` + 轻量 `manifest.json` 索引**；**缓存由 Vite 产物内容 hash 保证**，已无 `bump-version.sh`。本文件与 AGENTS.md 概述段若仍出现 `data/workbench.json` / `bump-version.sh` 字样，一律以本段为准。
+> ⚠️ **与旧架构的关键差异**：早期版本把整份数据塞进单一 `data/workbench.json` 并靠 `bump-version.sh` 刷新 `?v=` 参数破缓存；2026-07-31 重构拆成 `kb/<id>.md` + 轻量 `manifest.json` 索引。2026-08-04 进一步**移除中央 `manifest.json`**：索引改为**现拉 `kb/` 与 `todos/` 目录树每文件 blob sha**（`listDir`），本地基线由 `wb.syncState.v1`（path→sha）承载，乐观锁 sha 直接取自目录树——消除「每次同步写 1 个大索引」的热点；`manifest.ts` 仅保留 `@deprecated` 的遗留读取。缓存由 Vite 产物内容 hash 保证，已无 `bump-version.sh`。本文件与 AGENTS.md 概述段若仍出现 `data/workbench.json` / `bump-version.sh` 字样，一律以本段为准。
 
 ---
 
@@ -91,7 +91,7 @@ graph TD
             STORE["stores/data.ts<br/>Pinia 数据层 + 同步适配器"]
             STORAGE["storage/storageLayer.ts<br/>本地优先双写唯一入口"]
             DB["db/*（IndexedDB 数据层 + 图片 store）"]
-            GH["github/*（client/contents/manifest/diagnose/repoFile）"]
+            GH["github/*（client/contents/listDir/diagnose/repoFile，manifest 仅遗留读取）"]
             SYNC["sync/*（engine/merge/serialize）"]
             IMG["image/*（cloud/localCloud/gitCloud/hash）"]
         end
@@ -139,14 +139,14 @@ workbench/
 │   ├── main.ts             ← 应用引导：挂载 Pinia、Router、Element Plus
 │   ├── App.vue             ← 应用外壳：顶栏（品牌 / 导航 / SyncChip / ⚙ 设置）/ router-view
 │   ├── router/index.ts     ← 路由表（hash 模式）：/todos · /articles/:id? · /share/:id
-│   ├── types/index.ts      ← 全局类型（Todo / Article / Config / Manifest / SyncPhase ...）
+│   ├── types/index.ts      ← 全局类型（Todo / Article / Config / Manifest（遗留）/ SyncPhase ...）
 │   ├── stores/
 │   │   └── data.ts         ← ★ 唯一 Pinia 数据层：内存快照 + 迁移 + 图云层接入 + 同步适配器
 │   ├── services/
 │   │   ├── db/             ← IndexedDB 数据层（indexeddb / schema / types），含图片 store
 │   │   ├── storage/
 │   │   │   └── storageLayer.ts   ← ★ 本地优先双写唯一入口（local-first：先写 IDB 再触发同步）
-│   │   ├── github/         ← ★ 唯一远端同步通道（client / contents / manifest / diagnose / repoFile）
+│   │   ├── github/         ← ★ 唯一远端同步通道（client / contents / listDir / diagnose / repoFile；manifest 仅 @deprecated 遗留读取）
 │   │   ├── sync/           ← ★ 同步引擎（engine / merge / serialize）：守卫 / 差分 / LWW / 冲突重试
 │   │   └── image/          ← 图云层（cloud / localCloud / gitCloud / hash / index）：极简↔同步路由
 │   ├── lib/
@@ -179,7 +179,7 @@ workbench/
 - **`WorkbenchData` / 内存快照（`stores/data.ts`）**：`{ version:1, todos:[], articles:[], updatedAt }`，对应 `wb.data.v1`。
 - **`Todo`**：`{ id, title, desc?, color, status('todo'|'doing'|'done'), due?, articleId?, time, createdAt, updatedAt, deleted }`（软删墓碑）。
 - **`Article`**：`{ id, title, content(Markdown), tags:[], fromTodo?, createdAt, updatedAt, deleted }`；远端 `kb/<id>.md` 以 frontmatter 承载 `title/tags/...`，正文为 Markdown。
-- **`Manifest`**：轻量索引 `{ articles: {id:{updatedAt,sha}}, todos?: {id:{updatedAt,sha}}, updatedAt }`，对应远端 `manifest.json`；`wb.manifestSha.v1` 存其乐观锁 sha。
+- **`Manifest`（@deprecated 遗留）**：旧架构轻量索引 `{ articles: {id:{updatedAt,sha}}, todos?: {id:{updatedAt,sha}}, updatedAt }`，曾对应远端 `manifest.json`；`wb.manifestSha.v1` 曾存其乐观锁 sha。**2026-08-04 起不再写入 `manifest.json`**：索引改为现拉 `kb/` + `todos/` 目录树每文件 blob sha（`github/listDir.fetchIndex`），本地基线改由 `wb.syncState.v1`（`path→sha`）承载。仅 `github/manifest.ts` 的 `getManifest` 保留以只读方式兼容既有仓库遗留 `manifest.json`；新同步路径（engine→diff.planSync→contents.pushRemote）完全不依赖它。
 - **图云键**：
   - 极简模式（IndexCloudLayer via IndexedDB）：`local-img:<sha>`，`resolve` 时转 object URL；
   - 同步模式（gitCloud）：`images/<hash>.<ext>`，`resolve` 时由调用方按 `config` 拼 `raw.githubusercontent.com` 直链（见 `ShareView`、`lib/markdown` 的 `resolveImage` 约定）。
@@ -189,7 +189,7 @@ workbench/
 
 ## 5. 数据流（核心链路）
 
-> 追踪场景：**使用者在编辑器敲下内容并保存，直到它落进 GitHub 数据仓库的 `kb/<id>.md` 并经 `manifest.json` 索引**。
+> 追踪场景：**使用者在编辑器敲下内容并保存，直到它落进 GitHub 数据仓库的 `kb/<id>.md`，并由 `kb/` + `todos/` 目录树每文件 blob sha 索引（无中央 `manifest.json`）**。
 
 ```mermaid
 sequenceDiagram
@@ -214,24 +214,24 @@ sequenceDiagram
     alt 未启用或配置不完整
         SE-->>S: setPhase('off')（本地模式，绝不发请求、绝不报「同步失败」）
     else 配置完整
-        SE->>GH: fetchManifest(branch) —— 一次轻量 GET
-        GH->>API: GET contents/manifest.json
-        API->>R: 读 manifest
-        R-->>API: { 索引, sha }
-        SE->>SE: planDiff(local, manifest) 按 id 算 pull/push
+        SE->>GH: fetchIndex(branch) —— 现拉 kb/ + todos/ 目录树每文件 blob sha
+        GH->>API: GET contents/kb + GET contents/todos
+        API->>R: 列目录树
+        R-->>API: { 各文件 path→blob sha }
+        SE->>SE: planSync(local, index) 按三态（sha 相等/S♻本地新/远端新）算 pull/push/delete
         SE->>GH: fetchArticles(pull) 仅差分拉取正文
         SE->>SE: mergeArticles(local, pulled)（LWW，逐条 updatedAt 取新）
         SE->>DB: applyRemote() 写回本地
-        alt 本地无领先变更（aPlan.push 空）
+        alt 本地无领先变更（aPlan.push/del 空）
             SE-->>S: setPhase('ok')；不写远端（避免空 commit）
         else 需推送
-            SE->>GH: pushRemote(用刚拉到的远端 manifest.sha 作乐观锁)
-            GH->>API: PUT kb/<id>.md + PUT manifest.json
+            SE->>GH: pushRemote(用刚拉到的目录树 sha 作乐观锁 treeShaByPath)
+            GH->>API: 仅 PUT/DELETE 真正变化的 kb/<id>.md / todos/<id>.json（不写 manifest.json）
             API->>R: 创建 commit
             alt 409 / conflictSlug（远端已被改）
-                SE->>SE: 退避重试（上限 MAX_RETRY）
+                SE->>SE: 退避重试（上限 MAX_RETRY，重拉目录树合并）
             else 成功
-                SE-->>S: setPhase('ok') + 回写 manifestSha
+                SE-->>S: setPhase('ok') + 回写 wb.syncState.v1（path→sha）
             end
         end
     end
@@ -260,9 +260,9 @@ sequenceDiagram
 
 | 调用方 | 被调用方 | 关键接口 |
 |--------|---------|---------|
-| `github/contents.fetchManifest` | Contents API | `GET /repos/{o}/{r}/contents/manifest.json?ref={branch}` |
+| `github/listDir.fetchIndex` | Contents API | `GET /repos/{o}/{r}/contents/kb?ref={branch}` + `.../contents/todos`（列目录树拿每文件 blob sha，替代旧中央 `manifest.json`） |
 | `github/contents.fetchArticles/fetchTodos` | Contents API | `GET /repos/{o}/{r}/contents/kb/{id}.md`（按差分 id 列表） |
-| `github/contents.pushRemote` | Contents API | `PUT .../kb/{id}.md` + `PUT .../manifest.json`（带 sha 乐观锁） |
+| `github/contents.pushRemote` | Contents API | 仅 `PUT .../kb/{id}.md` / `todos/<id>.json` + 必要时 `DELETE`（带目录树 sha 乐观锁 `treeShaByPath`，**不再写 `manifest.json`**） |
 | `github/contents.pushImage` | Contents API | `PUT /repos/{o}/{r}/contents/images/{hash}.{ext}`（图云同步模式，返回 `images/<hash>.<ext>` 键） |
 | `github/diagnose.testConnection` | Repos API | `GET /repos/{o}/{r}` 校验 `permissions.push`；超时 12s |
 | `github/diagnose.runDiagnose` | 多步 | 配置检查 → 网络连通 → 令牌有效性 → 仓库写权限 → 数据文件（+ 可选公开库） |
@@ -328,7 +328,7 @@ graph TD
         CodeRepo["代码仓库 GuoxinL/workbench<br/>分支 main · 公开"]
         Actions["GitHub Actions<br/>.github/workflows/deploy.yml"]
         PagesCDN["GitHub Pages 静态托管<br/>https://guoxinl.github.io/workbench/（dist/）"]
-        DataRepo[("数据仓库 GuoxinL/workbench-data<br/>kb/&lt;id&gt;.md + manifest.json · 私有")]
+        DataRepo[("数据仓库 GuoxinL/workbench-data<br/>kb/&lt;id&gt;.md + todos/&lt;id&gt;.json（目录树索引，无中央 manifest.json）· 私有")]
         CodeRepo -->|"push main 触发"| Actions
         Actions -->|"npm ci && npm run build → 上传 dist"| PagesCDN
     end
@@ -389,7 +389,7 @@ graph TD
 | # | 决策 | Why | 影响范围 | 日期 |
 |---|------|-----|---------|------|
 | 1 | 用 GitHub 私有仓库承载数据，前端纯静态托管在 Pages | 零后端、零运维；使用者完全掌握数据主权；白拿 commit 历史做版本回溯 | 全局架构 | 2026-07 |
-| 2 | 远端按文章拆分为 `kb/<id>.md` + 轻量 `manifest.json` 索引（取代旧单文件 `data/workbench.json`） | 单文件全量读写 payload 随数据量线性膨胀；索引驱动可"按 id 差分"只拉改动过的正文，降低配额消耗与冲突面 | `github/contents.ts`、`sync/engine.ts` | 2026-07-31 重构 |
+| 2 | 远端按文章拆分为 `kb/<id>.md` + 轻量索引（2026-07-31 初版为 `manifest.json`，2026-08-04 改为 `kb/` + `todos/` 目录树每文件 blob sha，无中央 `manifest.json`），取代旧单文件 `data/workbench.json` | 单文件全量读写 payload 随数据量线性膨胀；索引驱动可"按 id 差分"只拉改动过的正文，降低配额消耗与冲突面；去掉中央索引后每次同步从"写 1 个大索引"变成"只写真正变化的 N 个独立文件"，消除写入热点 | `github/listDir.ts`、`github/contents.ts`、`sync/engine.ts`、`sync/diff.ts` | 2026-07-31 重构 / 2026-08-04 去中央索引 |
 | 3 | 逐条记录 LWW 合并，而非整文件覆盖 | 整文件覆盖会让两端并发编辑**不同条目**时互相丢数据；按 `id` + `updatedAt` 逐条取新收敛冲突面 | `sync/merge.ts` | 2026-07 |
 | 4 | 删除采用软删除墓碑，过期在序列化时清理 | 硬删除在多端场景会被旧数据"复活"；墓碑保证删除动作可传播 | `sync/serialize.ts` | 2026-07 |
 | 5 | 提交带 `sha` 做乐观锁，冲突（409 / conflictSlug）重拉合并重试 | Contents API 的 PUT 天然要求 sha 匹配（CAS）；重试而非报错可让"两端几乎同时提交"自愈 | `sync/engine.ts`、`github/contents.ts` | 2026-07 |

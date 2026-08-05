@@ -60,7 +60,7 @@ export function mergeInto(local: WorkbenchData, remote: WorkbenchData): MergeRes
 | 函数 / 变量 | `camelCase` | `mergeInto`、`runDiagnose`、`schedulePush` |
 | 类型 / 接口 / 组件 | `PascalCase` | `Config`、`WorkbenchData`、`TodosView`、`LinksPanel` |
 | 模块级常量 | `UPPER_SNAKE_CASE` | `MAX_RETRY`、`PUSH_DEBOUNCE`、`MIN_POLL`（`engine.ts`） |
-| localStorage 键 | `wb.<name>.v<n>` 字符串常量 | `wb.data.v1`、`wb.cfg.v1`、`wb.manifestSha.v1`、`wb.seeded`（`stores/data.ts`） |
+| localStorage 键 | `wb.<name>.v<n>` 字符串常量 | `wb.data.v1`、`wb.cfg.v1`、`wb.syncState.v1`、`wb.seeded`（`stores/data.ts`） |
 | CSS 类名 | `kebab-case` | `.sync-chip`、`.icon-btn`、`.note-item` |
 | 事件名（Pinia/自定义） | `名词:动词` 或动作语义 | `change`、`dirty`、`sync` |
 
@@ -78,7 +78,7 @@ export function mergeInto(local: WorkbenchData, remote: WorkbenchData): MergeRes
 ### 2.4 注释（中文为默认语言）
 
 - **文件头**：块注释，格式为 `文件名 —— 一句话职责` + 要点列表。
-- 行内注释解释 **Why 而非 What**，用中文，可含排障背景（如 `engine.ts` 对 `manifestSha` 乐观锁的注释）。
+- 行内注释解释 **Why 而非 What**，用中文，可含排障背景（如 `engine.ts` 对 `syncState` 本地基线 / `treeShaByPath` 乐观锁的注释）。
 - 禁止保留被注释掉的代码（除非附 `TODO(name): 删除时机`）。
 
 ### 2.5 错误处理与用户反馈
@@ -92,8 +92,8 @@ export function mergeInto(local: WorkbenchData, remote: WorkbenchData): MergeRes
 
 - localStorage 键 `wb.*` **只允许** `stores/data.ts` 读写；其余模块经 `useDataStore()` API 操作。
 - 结构化数据走 IndexedDB（`services/db/*` + `services/storage/storageLayer.ts` 双写）。
-- GitHub Contents API **只允许** `services/github/*` + `services/sync/*` 调用，数据载体为远端 `kb/<id>.md`（frontmatter + 正文）+ 根目录 `manifest.json`（轻量索引）。
-- 新增持久化字段：必须同时考虑 LWW 合并逻辑（`services/sync/merge.ts` 的 `mergeTodos`/`mergeArticles`）与本地落盘（`cleanupTombstones`），并确认 `manifest.json` 是否应包含该字段。
+- GitHub Contents API **只允许** `services/github/*` + `services/sync/*` 调用，数据载体为远端 `kb/<id>.md`（frontmatter + 正文）+ `todos/<id>.json`（待办 JSON）+ `images/<hash>.<ext>`（图云）；索引为**现拉的 `kb/`、`todos/` 目录树每文件 blob sha**（`github/listDir.ts` 的 `fetchIndex`），**不再有根目录 `manifest.json` 中央索引**。
+- 新增持久化字段：必须同时考虑 LWW 合并逻辑（`services/sync/merge.ts` 的 `mergeTodos`/`mergeArticles`）与本地落盘（`cleanupTombstones`），并确认字段是否需进入 `kb/<id>.md` frontmatter / `todos/<id>.json`。
 - 数据变更走 store action，批量修改避免多次同步；同步由 `engine.ts` 统一编排（防抖推送 + 轮询 + 并发排队）。
 
 ## 4. CSS 规范（从现有代码归纳）
@@ -118,7 +118,7 @@ export function mergeInto(local: WorkbenchData, remote: WorkbenchData): MergeRes
 ## 7. 安全编码（本项目真实红线）
 
 1. **GitHub Token 只存 `wb.cfg.v1`**（localStorage 配置，由 `SettingsSheet` 写入）：
-   - **禁止**进入同步载荷——`manifest.json` 仅含轻量索引字段（`version/updatedAt/articles/todos`），新增字段时严禁把 `cfg` 或 token 混入；
+   - **禁止**进入同步载荷——远端文件（`kb/*.md` 的 frontmatter + 正文、`todos/*.json`、`images/*`）只序列化业务字段，新增字段时严禁把 `cfg` 或 token 混入；
    - **禁止** `console.log` 打印 token / 完整请求头；
    - **禁止**硬编码进源码、写入仓库或任何 git（AGENTS.md 红线 5）。pre-commit 的敏感文件检查是最后防线。
 2. **XSS：用户内容渲染前必须转义**：

@@ -22,7 +22,7 @@
 | 本地 | 开发与自验 | `http://localhost:5173`（`npm run dev`，Vite） | 本机浏览器 localStorage + IndexedDB；同步开关关闭即纯本地模式 | 本机 | 无 |
 | ~~test~~ | **不存在** | — | — | — | — |
 | ~~pre~~ | **不存在** | — | — | — | — |
-| 生产 | 正式使用 | `https://guoxinl.github.io/workbench/` | 使用者私有仓库 `GuoxinL/workbench-data` 的 `kb/<id>.md` + `manifest.json` | 公网 HTTPS，任何人可打开页面（但看不到数据，数据需自己的 PAT） | 无（维护者本人推送即触发 CI 发布） |
+| 生产 | 正式使用 | `https://guoxinl.github.io/workbench/` | 使用者私有仓库 `GuoxinL/workbench-data` 的 `kb/<id>.md` + `todos/<id>.json`（+ `images/`） | 公网 HTTPS，任何人可打开页面（但看不到数据，数据需自己的 PAT） | 无（维护者本人推送即触发 CI 发布） |
 | 代理 Worker（可选） | 网络访问不了 `api.github.com` 时的中转 | `https://<name>.workers.dev` | 无状态、不存储 | 由使用者自部署到自己的 Cloudflare 账号 | 无 |
 
 **两个仓库不要搞混**：
@@ -30,7 +30,7 @@
 | 仓库 | 内容 | 可见性 | 作用 |
 |------|------|--------|------|
 | `GuoxinL/workbench` | 代码（Vue3 + Vite 工程） | **公开**（Pages 免费托管要求） | 部署源，push `main` 即触发 Actions 构建发布 |
-| `GuoxinL/workbench-data` | `kb/<id>.md` + `manifest.json` | **必须私有** | 待办 / 文章数据；Pages 站点公开，数据绝不能放这里 |
+| `GuoxinL/workbench-data` | `kb/<id>.md` + `todos/<id>.json` + `images/<hash>.<ext>` | **必须私有** | 待办 / 文章数据；Pages 站点公开，数据绝不能放这里 |
 
 ## 2. 制品
 
@@ -61,7 +61,7 @@
 ### 敏感配置
 
 - **【禁止】** 把 GitHub PAT 写进源码、`wb.cfg.v1` 以外的任何位置、日志或任何提交内容（AGENTS.md 红线 5）。数据仓库/代码仓库一旦泄漏，等于交出 GitHub 账户写权限。
-- **【必须】** 令牌只保存在使用者本机浏览器的 `wb.cfg.v1`；同步序列化只在远端写 `kb/<id>.md` + `manifest.json`，从结构上保证令牌不会随同步上传。
+- **【必须】** 令牌只保存在使用者本机浏览器的 `wb.cfg.v1`；同步序列化只在远端写 `kb/<id>.md` + `todos/<id>.json` + `images/<hash>.<ext>`（不再写 manifest.json），这些远端文件均不含 token，从结构上保证令牌不会随同步上传。
 - **【必须】** 令牌权限最小化：细粒度 PAT → Repository access 只勾**数据仓库** → Permissions → Contents 设 **Read and write**。
 - **【必须】** 代理地址只填自己部署的 Worker——代理能看到令牌明文，公共代理等同于交出令牌。
 - **【建议】** 公共电脑用完在设置抽屉清空 token。
@@ -108,7 +108,7 @@ git push origin main
 ```
 
 - **禁止** `git push --force` 到 `main`（会破坏 Pages 发布历史与他机 clone）。
-- **数据不随代码回滚**：数据在 `workbench-data` 仓库的 `kb/<id>.md` + `manifest.json`，代码回滚不影响数据；数据要回滚请在该仓库按 commit 恢复，或用设置抽屉「导出备份」的 JSON 覆盖回去（导出的是本地 `wb.data.v1`）。
+- **数据不随代码回滚**：数据在 `workbench-data` 仓库的 `kb/<id>.md` + `todos/<id>.json`，代码回滚不影响数据；数据要回滚请在该仓库按 commit 恢复，或用设置抽屉「导出备份」的 JSON 覆盖回去（导出的是本地 `wb.data.v1`）。
 
 ## 5. 健康检查
 
@@ -147,7 +147,7 @@ git push origin main
 | IndexedDB | 浏览器配额（通常数百 MB+） | 写入失败 | 一般不会触达；超大附件另寻方案 |
 | GitHub Pages | 仓库 ≤1GB、月流量 100GB（GitHub 官方软限制） | 远未接近 | 无需处理 |
 
-> 重构后远端按文章拆分为 `kb/<id>.md`，不再有「单 JSON 文件全量读写」的线性膨胀问题；`manifest.json` 仅存轻量索引。
+> 重构后远端按文章/待办拆分为 `kb/<id>.md` + `todos/<id>.json`，不再有「单 JSON 文件全量读写」的线性膨胀问题；索引为同步时现拉的 `kb/`、`todos/` 目录树每文件 blob sha，**不再有中央 `manifest.json`**（每轮多两次目录列表 GET，仍远低于全量读写）。
 
 ## 8. 日志规范
 
@@ -197,7 +197,7 @@ git push origin main
 - ❌ 用户内容渲染前未经转义（`lib/markdown` 经 DOMPurify；纯文本走 `lib/html.esc()`）
 - ❌ `git push --force` 到 `main`
 - ❌ 在 Worker 里放开 `ALLOW` 白名单做任意 URL 中转，或把 Worker 地址分享给他人使用
-- ❌ 手工编辑数据仓库里的 `kb/<id>.md` / `manifest.json`（改坏会触发同步解析失败，只能删掉重建或用备份覆盖）
+- ❌ 手工编辑数据仓库里的 `kb/<id>.md` / `todos/<id>.json`（改坏会触发同步解析失败，只能删掉重建或用备份覆盖）
 - ❌ 直接在 GitHub 网页端改代码仓库文件后发布（会绕过本地 git 钩子与 CI 构建）
 
 ## 参考

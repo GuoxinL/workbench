@@ -30,11 +30,11 @@
 
 | # | 被调方 | 用途 | 协议 / 集成方式 | 关键入口 | 失败处理 |
 |---|-------|------|-----------------|---------|---------|
-| 1 | **GitHub REST API**（`api.github.com`） | 唯一持久化后端：读写 `kb/<id>.md` + `manifest.json`；图云经 `images/<hash>.<ext>`；连接测试；令牌 / 限流诊断 | HTTPS REST，`Authorization: Bearer <PAT>`，`Accept: application/vnd.github+json` | ① `GET /repos/{o}/{r}/contents/manifest.json?ref={branch}`<br>② `GET/PUT /repos/{o}/{r}/contents/kb/{id}.md`（按差分 id）<br>③ `PUT /repos/{o}/{r}/contents/images/{hash}.{ext}`（图云同步模式）<br>④ `GET /repos/{o}/{r}`（校验 `permissions.push`）<br>⑤ `GET /`（连通性探测） | **超时**：统一 12s `AbortController`（`diagnose.ts`）；**重试**：仅 PUT 遇 409 / `conflictSlug` 冲突重试（上限 `MAX_RETRY`，退避 `RETRY_BACKOFF×attempt`，`sync/engine.ts`）；**降级**：无自动降级，整轮 `doSync` 进入 `error` 态，本地数据仍完整可用 |
-| 2 | **数据仓库 `GuoxinL/workbench-data`** | 存放 `kb/<id>.md`（文章正文 + frontmatter）+ `manifest.json`（轻量索引）；每次推送产生一次 commit | 经上面 ①/②/③ 间接访问，**不直连 git** | 默认值来自 `Config`（可在设置抽屉覆盖）；键 `wb.cfg.v1` | 文件不存在（GET 404）→ 视为「首次」，无 sha 的 PUT 自动创建；内容非法 JSON → 引擎 `catch` 置 `error`，**无降级**（需人工修远端） |
+| 1 | **GitHub REST API**（`api.github.com`） | 唯一持久化后端：读写 `kb/<id>.md` + `todos/<id>.json`（索引由 `kb/` + `todos/` 目录树每文件 blob sha 现拉，无中央 `manifest.json`）；图云经 `images/<hash>.<ext>`；连接测试；令牌 / 限流诊断 | HTTPS REST，`Authorization: Bearer <PAT>`，`Accept: application/vnd.github+json` | ① `GET /repos/{o}/{r}/contents/kb?ref={branch}` + `GET /repos/{o}/{r}/contents/todos`（列目录树拿每文件 blob sha，替代旧中央 `manifest.json` 索引）<br>② `GET/PUT /repos/{o}/{r}/contents/kb/{id}.md`（按差分 id）<br>③ `PUT/DELETE /repos/{o}/{r}/contents/kb/{id}.md` + `.../todos/{id}.json`（按差分 id，乐观锁 sha 取自目录树 `treeShaByPath`）<br>④ `PUT /repos/{o}/{r}/contents/images/{hash}.{ext}`（图云同步模式）<br>⑤ `GET /repos/{o}/{r}`（校验 `permissions.push`）<br>⑥ `GET /`（连通性探测） | **超时**：统一 12s `AbortController`（`diagnose.ts`）；**重试**：仅 PUT 遇 409 / `conflictSlug` 冲突重试（上限 `MAX_RETRY`，退避 `RETRY_BACKOFF×attempt`，`sync/engine.ts`）；**降级**：无自动降级，整轮 `doSync` 进入 `error` 态，本地数据仍完整可用 |
+| 2 | **数据仓库 `GuoxinL/workbench-data`** | 存放 `kb/<id>.md`（文章正文 + frontmatter）+ `todos/<id>.json`（待办）；索引由 `kb/` + `todos/` 目录树每文件 blob sha 现拉，**无中央 `manifest.json`**；每次推送产生一次 commit | 经上面 ①/②/③ 间接访问，**不直连 git** | 默认值来自 `Config`（可在设置抽屉覆盖）；键 `wb.cfg.v1` | 文件不存在（GET 404）→ 视为「首次」，无 sha 的 PUT 自动创建；内容非法（frontmatter 损坏 / JSON 解析失败）→ 引擎 `catch` 置 `error`，**无降级**（需人工修远端） |
 | 3 | **Cloudflare Worker 代理**（可选，使用者自部署） | 网络访问不了 `api.github.com` 时的中转 | HTTPS 反向代理，白名单透传 | 由 `cfg.apiBase` 激活：非空即替换 API 根地址；UI 在 `SettingsSheet.vue` | **无自动回退**：`apiBase` 非空即全量改走代理，代理挂掉不会回落官方地址，需人工清空该配置项 |
 | 4 | **GitHub Pages** | 静态托管 = 唯一代码分发渠道 | HTTPS 静态交付（`dist/`，由 GitHub Actions 发布） | `git push main` → `.github/workflows/deploy.yml` 构建并发布 | **无降级**：Pages 不可用 = 应用打不开。**无 Service Worker**（全仓库无 `sw.js` / `serviceWorker` 注册），离线冷启动白屏 |
-| 5 | **浏览器 `localStorage`** | 即时加载层（`wb.data.v1`）+ 配置（`wb.cfg.v1` 含 Token）+ 乐观锁 sha（`wb.manifestSha.v1`） | 同步 JS API | 键：`wb.data.v1` / `wb.cfg.v1` / `wb.manifestSha.v1`（`src/stores/data.ts:22-24`） | 写入有兜底（try/catch + 提示）；读取解析失败回落默认；容量上限约 5MB |
+| 5 | **浏览器 `localStorage`** | 即时加载层（`wb.data.v1`）+ 配置（`wb.cfg.v1` 含 Token）+ 本地同步基线（`wb.syncState.v1`，`path→sha`） | 同步 JS API | 键：`wb.data.v1` / `wb.cfg.v1` / `wb.syncState.v1`（`src/stores/data.ts`，`SYNC_STATE_KEY = 'wb.syncState.v1'`） | 写入有兜底（try/catch + 提示）；读取解析失败回落默认；容量上限约 5MB |
 | 6 | **浏览器 `IndexedDB`** | 结构化存储层（`services/db`）+ 图片 store（图云极简模式） | 异步 API | `src/services/db/*` | 写入失败不应阻断本地；同步引擎异常被 `storageLayer` 吞掉只影响远端 |
 | 7 | **浏览器平台 API** | 运行时刚性前提 | 原生 API | `fetch` + `AbortController`、`structuredClone`、DOM、ESM（Vite 构建产物） | 现代浏览器前提；无 polyfill |
 | 8 | **npm 依赖（构建期）** | Vue3 / Vite / Pinia / Element Plus / @milkdown/kit / dompurify / idb / marked / zod 等 | 构建期打包，运行时随 `dist/` 交付 | `package.json` | 构建失败阻断发布（CI 拦截） |
@@ -56,26 +56,26 @@
 
 - **触发场景**：新建 / 编辑 / 删除待办或文章、粘贴图片等**任何**数据变更。
 - **调用拓扑**：`视图/组件` ─→ `stores/data.ts` mutator ─→ `storageLayer.Save*()` ─→ **先写 IndexedDB（毫秒级、离线可用）** + 触发 `sync/engine.schedulePush()`（防抖）─→ `doSync()` ─→ **[可选 Worker]** ─→ `GitHub Contents API` ─→ `workbench-data` 仓库。
-- **传输数据**：`kb/<id>.md`（frontmatter + Markdown 正文）；`manifest.json` 为轻量索引；**Token 只在 `Authorization` 头中，绝不在 body 内**（红线 5）。
+- **传输数据**：`kb/<id>.md`（frontmatter + Markdown 正文）、`todos/<id>.json`（待办 JSON）；索引由目录树每文件 blob sha 现拉，**不再写 `manifest.json`**；**Token 只在 `Authorization` 头中，绝不在 body 内**（红线 5）。
 - **失败影响**：推送失败**不丢本地数据**——同步进入 `error` 态（SyncChip 红点），但本地 IndexedDB + `wb.data.v1` 完整；`dirty` 语义由引擎在下轮重试。跨设备一致性暂时中断。
 
 ### 3. 拉取与合并（多条触发路径汇入同一入口）
 
 - **触发场景**：① 定时轮询（间隔 `cfg.poll`，默认 5s，钳制 5–300s，`document.hidden` 时跳过）；② 回到前台 `visibilitychange` / 网络恢复 `online`；③ 手动点顶栏同步胶囊（非静默同步 + 提示）。
-- **调用拓扑**：`触发源` ─→ `engine.sync()` ─→ `contents.fetchManifest()`（轻量 GET）─→ `planDiff` 按 id 算 pull/push ─→ `fetchArticles/fetchTodos`（仅差分）─→ `mergeArticles/mergeTodos`（逐条 LWW）─→ `applyRemote` 写回本地 ─→ 有领先变更才 `pushRemote`。
+- **调用拓扑**：`触发源` ─→ `engine.sync()` ─→ `listDir.fetchIndex()`（现拉 `kb/` + `todos/` 目录树每文件 blob sha，替代旧 `fetchManifest` GET manifest.json）─→ `planSync`（`sync/diff.ts`，三态：sha 相等 / 本地新 / 远端新）算 pull/push/delete ─→ `fetchArticles/fetchTodos`（仅差分）─→ `mergeArticles/mergeTodos`（逐条 LWW）─→ `applyRemote` 写回本地 ─→ 有领先变更才 `pushRemote`（仅 PUT/DELETE 变化的文件，**不写 manifest.json**）。
 - **合并语义**：以 `id` 为主键，仅当 `remote.updatedAt > local.updatedAt` 才覆盖；软删墓碑保证删除传播（`sync/serialize.ts` 的 `cleanupTombstones`）。
 
 ### 4. 冲突重试（sha 乐观锁）
 
 - **触发场景**：两台设备几乎同时提交，PUT 时 `sha` 已过期。
-- **调用拓扑**：`pushRemote` ─→ 409 / `conflictSlug` ─→ 退避 `RETRY_BACKOFF × attempt` ─→ 用刚拉到的远端 manifest sha 重拉合并后重试（**最多 `MAX_RETRY` 轮**）。
-- **关键**：必须用**刚拉取到的远端 manifest sha**（非本地陈旧 sha）作乐观锁基准，否则重试循环每次重拉后仍用旧 sha → 死循环 → 同步失败（`sync/engine.ts:129-149` 注释）。
+- **调用拓扑**：`pushRemote` ─→ 409 / `conflictSlug` ─→ 退避 `RETRY_BACKOFF × attempt` ─→ 用刚拉到的远端目录树 sha 重拉合并后重试（**最多 `MAX_RETRY` 轮**）。
+- **关键**：必须用**刚拉取到的远端目录树 blob sha**（非本地陈旧 sha，`treeShaByPath`）作乐观锁基准，否则重试循环每次重拉后仍用旧 sha → 死循环 → 同步失败（`sync/engine.ts` 注释）。
 - **失败影响**：耗尽重试 → 本轮 `error`，`dirty` 仍为 `true`，下次触发会重新尝试，**数据不丢**。
 
 ### 5. 连接测试与五步诊断（排障手段）
 
 - **触发场景**：设置抽屉点「测试连接」或「诊断」。
-- **调用拓扑**：`SettingsSheet` ─→ `diagnose.testConnection()` / `diagnose.runDiagnose()` ─→ 依次：配置检查 → `GET /`（网络连通）→ 令牌有效性 → 仓库写权限（`permissions.push`）→ 数据文件（`manifest.json`，404 视为未创建）＋可选公开库 `workbench-public` 检查。
+- **调用拓扑**：`SettingsSheet` ─→ `diagnose.testConnection()` / `diagnose.runDiagnose()` ─→ 依次：配置检查 → `GET /`（网络连通）→ 令牌有效性 → 仓库写权限（`permissions.push`）→ 数据文件（遗留兼容：仍会 `GET contents/manifest.json`，404 视为未创建/首次；新仓库以目录树 `contents/kb` + `contents/todos` 为准）＋可选公开库 `workbench-public` 检查。
 - **设计要点**：**任一步失败即中断并给出具体处置建议**；**配置不完整时 `testConnection` 直接返回友好提示、不发任何请求、不置「同步失败」**（回归红线，见 `verification.md` §7）。
 
 ### 6. 经 Cloudflare Worker 代理的中转链路（可选）
@@ -121,12 +121,12 @@ flowchart TB
         SYNC --> GH
     end
 
-    LS[("localStorage<br/>wb.data.v1 / wb.cfg.v1(含 PAT)<br/>wb.manifestSha.v1")]
+    LS[("localStorage<br/>wb.data.v1 / wb.cfg.v1(含 PAT)<br/>wb.syncState.v1(path→sha)")]
     IDB[("IndexedDB<br/>services/db 结构化存储 + 图片 store")]
     Pages["GitHub Pages<br/>GuoxinL/workbench（公开）<br/>dist/ · 无 Service Worker"]
     Worker["Cloudflare Worker 代理（可选·自部署）<br/>Origin 白名单 + 路径白名单"]
     GHAPI["GitHub REST API<br/>api.github.com<br/>contents / repos / root"]
-    DataRepo[("数据仓库 GuoxinL/workbench-data（私有）<br/>kb/&lt;id&gt;.md + manifest.json")]
+    DataRepo[("数据仓库 GuoxinL/workbench-data（私有）<br/>kb/&lt;id&gt;.md + todos/&lt;id&gt;.json（目录树索引，无中央 manifest.json）")]
 
     Desktop -->|"① HTTPS 加载静态资源"| Pages
     Mobile -->|"① HTTPS 加载静态资源"| Pages
@@ -171,8 +171,8 @@ flowchart TB
 | F7 | **`429 Too Many Requests`** | 同步 | 红点 + 限流提示（已中文化为 `ratelimit`） | ⚠️ 部分降级 | `readErr` 映射 403/429 → `ratelimit`（`diagnose.ts:70`）；无 `Retry-After` 解析、无退避 |
 | F8 | **PUT 冲突 409 / `conflictSlug`** | 单次推送 | **通常用户无感知**（静默重试后成功） | ✅ 可降级（唯一有重试的场景） | 识别冲突 → 退避 `RETRY_BACKOFF × attempt` → 用刚拉到的远端 sha 重拉合并 → 再 PUT，最多 `MAX_RETRY` 轮（`sync/engine.ts`） |
 | F9 | **连续 `MAX_RETRY` 轮冲突全败** | 本次同步 | 红点 + error | ✅ 可降级 | 抛错走 `catch` → `setPhase('error')`（`sync/engine.ts:155-158`）。**数据不丢**：下次触发重新尝试 |
-| F10 | **远端 `manifest.json` / `kb/<id>.md` 不是合法内容**（被人工误改） | 同步（拉取即中断） | 红点 + 解析/校验失败 | ❌ 无降级 | 引擎 `catch` 置 `error`；本地变更无法上行，直到人工修好远端。兜底：用「导出备份」保住本地数据 |
-| F11 | **远端 manifest 尚未创建（GET 404）** | 无（正常首次场景） | 无异常；诊断提示「尚未创建，首次同步会自动生成」 | ✅ 正常路径 | `fetchManifest` 返回 `null` → 视为首次，无 sha 的 PUT 自动创建（`github/contents.ts`、`github/manifest.ts`） |
+| F10 | **远端 `kb/<id>.md` / `todos/<id>.json` 不是合法内容**（被人工误改：frontmatter 损坏 / JSON 解析失败） | 同步（拉取即中断） | 红点 + 解析/校验失败 | ❌ 无降级 | 引擎 `catch` 置 `error`；单条损坏仅丢弃该条（fetch 时 try/catch 跳过），整轮仍尽量推进；本地变更无法上行时直到人工修好远端。兜底：用「导出备份」保住本地数据 |
+| F11 | **远端数据尚未创建（目录树为空 / GET 404）** | 无（正常首次场景） | 无异常；诊断提示「尚未创建，首次同步会自动生成」 | ✅ 正常路径 | `fetchIndex` 返回空 → 视为首次，无 sha 的 PUT 自动创建（`github/listDir.ts`、`github/contents.ts`） |
 | F12 | **Cloudflare Worker 代理下线**（`apiBase` 已配置） | 同步、测试、诊断——全部端点 | 红点 + 代理不可达提示 | ❌ 无自动降级 | `apiBase` 非空即全量改走代理，无健康检查无回落。恢复路径：设置清空「API 代理地址」。本地功能不受影响 |
 | F13 | **Worker 拒绝：路径不在白名单（403）** | 对应端点 | 红点 + 白名单提示 | ❌ 无降级 | Worker `ALLOW` 正则拦截（含 `/repos/{o}/{r}/contents/**`，图云 `images/` 同属 contents 路径）；新增转发路径必须先加白名单 |
 | F14 | **Worker 拒绝：Origin 不在白名单（403）**（如本地开发调代理） | 全部经代理请求 | 红点 + 来源未允许提示 | ❌ 无降级 | `ALLOW_ORIGINS` 默认仅放行 `https://guoxinl.github.io`；本地开发需把 origin 加进 Worker 白名单 |
