@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>同步状态机 · 交互演示（3 版本）</title>
+<style>
+  :root, [data-theme="light"] {
+    --bg:#f5f7fa; --panel:#ffffff; --text:#1f2937; --muted:#6b7280; --border:#e5e7eb;
+  }
+  [data-theme="dark"] {
+    --bg:#0b1120; --panel:#111827; --text:#e5e8ef; --muted:#94a3b8; --border:#334155;
+  }
+  [data-theme="hc"] {
+    --bg:#000000; --panel:#000000; --text:#ffffff; --muted:#ffd400; --border:#ffffff;
+  }
+  --s-idle:#94a3b8; --s-off:#374151; --s-sync:#2563eb; --s-up:#16a34a; --s-ok:#22c55e; --s-err:#dc2626;
+  --t-blue:#2563eb; --t-green:#16a34a; --t-yellow:#d97706; --t-red:#dc2626; --t-black:#374151;
+
+  * { box-sizing:border-box; }
+  body { margin:0; padding:18px; font-family:system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--text); }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:13px; margin:0 0 14px; }
+  .toolbar { display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin-bottom:12px; }
+  .grp { display:flex; gap:6px; align-items:center; }
+  .grp > span.lbl { font-size:13px; color:var(--muted); }
+  button { font:inherit; font-size:13px; padding:6px 12px; border-radius:8px; cursor:pointer;
+           border:1px solid var(--border); background:var(--panel); color:var(--text); transition:.15s; }
+  button:hover { border-color:var(--s-sync); }
+  button.active { outline:2px solid var(--s-sync); background:color-mix(in srgb, var(--s-sync) 12%, var(--panel)); }
+  button.play { background:var(--s-up); color:#fff; border-color:var(--s-up); }
+  label.chk { font-size:13px; color:var(--muted); display:flex; gap:6px; align-items:center; cursor:pointer; }
+  .wrap { display:flex; gap:14px; align-items:stretch; flex-wrap:wrap; }
+  .stage { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:8px; flex:1 1 540px; min-width:320px; }
+  svg { width:100%; height:auto; display:block; }
+  .node-box { stroke:rgba(255,255,255,.25); stroke-width:1.5; cursor:pointer; transition:opacity .2s, stroke-width .2s; }
+  .node-box:hover { stroke:#fff; stroke-width:3; }
+  .node-text { fill:#fff; font-size:14px; font-weight:600; text-anchor:middle; dominant-baseline:central; pointer-events:none; }
+  .node-ring { fill:none; stroke:#fff; stroke-width:3; opacity:0; transition:opacity .2s; pointer-events:none; }
+  .node-ring.on { opacity:1; }
+  .edge { fill:none; stroke-width:4.5; transition:opacity .2s, stroke-width .2s; }
+  .edge.dim { opacity:.12; }
+  .edge.hl { stroke-width:6; }
+  .edge-label { fill:var(--text); font-size:11.5px; transition:opacity .2s; }
+  .edge-label.dim { opacity:.12; }
+  .edge-label-bg { fill:var(--panel); stroke:var(--border); stroke-width:1; }
+  .panel { flex:1 1 280px; min-width:260px; background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px; }
+  .panel h2 { font-size:15px; margin:0 0 8px; display:flex; align-items:center; gap:8px; }
+  .chip { width:14px; height:14px; border-radius:4px; display:inline-block; }
+  .panel .desc { font-size:13px; color:var(--muted); line-height:1.6; margin:0 0 10px; }
+  .panel h3 { font-size:13px; margin:12px 0 6px; color:var(--text); }
+  .tx { font-size:13px; display:flex; align-items:center; gap:6px; padding:3px 0; }
+  .tx .arr { color:var(--muted); }
+  .reco { font-size:13px; line-height:1.7; padding-left:18px; margin:4px 0; }
+  .reco li { margin:2px 0; }
+  .log { width:100%; margin-top:14px; background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:10px 14px;
+         font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px; max-height:170px; overflow:auto; }
+  .log .ln { padding:2px 0; border-bottom:1px dashed var(--border); }
+  .log .t { color:var(--muted); }
+  .log .st { font-weight:700; }
+  .legend { display:flex; flex-wrap:wrap; gap:14px; margin-top:12px; font-size:12.5px; }
+  .legend .item { display:flex; gap:6px; align-items:center; }
+  .dot { width:13px; height:13px; border-radius:4px; display:inline-block; }
+  .hint { font-size:12.5px; color:var(--muted); margin-top:6px; }
+  .verdesc { font-size:12.5px; color:var(--muted); margin:2px 0 12px; }
+
+  /* ===== 个人管理台 · 实际状态指示器预览 ===== */
+  .preview { margin-top:18px; }
+  .preview h2 { font-size:15px; margin:4px 0; }
+  .bar { display:flex; align-items:center; justify-content:space-between; background:var(--panel);
+         border:1px solid var(--border); border-radius:12px; padding:10px 14px; }
+  .bar .brand { font-weight:700; font-size:14px; }
+  .status-pill { display:inline-flex; align-items:center; gap:8px; padding:5px 12px; border-radius:999px;
+         border:1px solid var(--border); background:color-mix(in srgb, var(--bg) 55%, var(--panel)); font-size:13px; }
+  .status-badge { display:inline-flex; align-items:center; gap:6px; padding:4px 11px; border-radius:8px;
+         font-size:12.5px; font-weight:600; color:#fff; }
+  .status-dot { display:inline-flex; align-items:center; }
+  .sdot { width:9px; height:9px; border-radius:50%; flex:none; }
+  .sdot.pulse { animation:pulse 1.2s ease-in-out infinite; }
+  .sdot.ring { background:transparent; }
+  @keyframes pulse { 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:.35; transform:scale(1.55); } }
+  .status-meta { color:var(--muted); font-size:12px; margin-left:4px; }
+  .btn-retry { margin-left:8px; font-size:12px; padding:3px 10px; border-radius:999px;
+         border:1px solid var(--s-err); color:var(--s-err); background:transparent; cursor:pointer; }
+  .chips { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+</style>
+</head>
+<body data-theme="light">
+  <h1>同步状态机 · 交互演示</h1>
+  <p class="sub">中央 manifest.json 热点替代 · 点击任意状态查看联动 · 三版本最佳实践可切换</p>
+
+  <div class="toolbar">
+    <div class="grp">
+      <span class="lbl">版本：</span>
+      <button data-ver="A" class="active">A · 聚焦高亮</button>
+      <button data-ver="B">B · 自动巡演</button>
+      <button data-ver="C">C · 事件日志</button>
+    </div>
+    <div class="grp">
+      <span class="lbl">主题：</span>
+      <button data-theme-btn="light" class="active">明色</button>
+      <button data-theme-btn="dark">暗色</button>
+      <button data-theme-btn="hc">高对比</button>
+    </div>
+    <div class="grp" id="playGrp" style="display:none">
+      <button class="play" id="playBtn">▶ 播放巡演</button>
+    </div>
+    <label class="chk"><input type="checkbox" id="toggleLabels" checked /> 转移标签</label>
+  </div>
+  <p class="verdesc" id="verDesc"></p>
+
+  <div class="wrap">
+    <div class="stage">
+      <svg id="sm" viewBox="0 0 920 560" role="img" aria-label="sync state machine"></svg>
+    </div>
+    <div class="panel" id="panel">
+      <h2><span class="chip" id="pHex"></span><span id="pTitle">点击一个状态</span></h2>
+      <p class="desc" id="pDesc">在左侧点任意状态节点，查看它的含义、出口转移与（error 的）恢复步骤。</p>
+      <h3>出口转移</h3>
+      <div id="pTx"><span class="desc">—</span></div>
+      <div id="pReco" style="display:none">
+        <h3>恢复步骤</h3>
+        <ol class="reco" id="pRecoList"></ol>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="item"><span class="dot" style="background:#94a3b8"></span>idle</div>
+    <div class="item"><span class="dot" style="background:#374151"></span>off</div>
+    <div class="item"><span class="dot" style="background:#2563eb"></span>syncing</div>
+    <div class="item"><span class="dot" style="background:#16a34a"></span>uptodate</div>
+    <div class="item"><span class="dot" style="background:#22c55e"></span>ok</div>
+    <div class="item"><span class="dot" style="background:#dc2626"></span>error</div>
+  </div>
+
+  <div class="log" id="log"></div>
+
+  <div class="preview">
+    <h2>个人管理台 · 实际状态指示器预览</h2>
+    <p class="sub">点状态机任意节点，下方小圆点同步变成该状态在 App 里的真实外观。</p>
+    <div class="grp" style="margin:2px 0 10px">
+      <span style="font-size:13px;color:var(--muted)">指示器样式：</span>
+      <button data-style="pill" class="active">① 药丸(点+字)</button>
+      <button data-style="badge">② 徽章(纯色字)</button>
+      <button data-style="app">③ App(纯点)</button>
+    </div>
+    <div class="bar">
+      <span class="brand">工作台</span>
+      <span id="livePill"></span>
+    </div>
+    <div class="chips" id="prevCards"></div>
+  </div>
+
+<script>
+const STATES = [
+  { id:'idle',     x:70,  y:70,  w:130, h:58, label:'idle',     fill:'var(--s-idle)',
+    desc:'初始/空闲态。同步引擎已加载但尚未运行，或上一轮已结束。' },
+  { id:'off',      x:70,  y:330, w:130, h:58, label:'off',      fill:'var(--s-off)',
+    desc:'同步已关闭。未启用，或配置不全（无 token / 仓库名错误），不发起任何网络请求。' },
+  { id:'syncing',  x:395, y:200, w:130, h:58, label:'syncing',  fill:'var(--s-sync)',
+    desc:'进行中。已拉取远端目录树、计算本地 git-blob sha，可能正在 PUT/GET。唯一会转圈的状态。' },
+  { id:'uptodate', x:720, y:70,  w:130, h:58, label:'uptodate', fill:'var(--s-up)',
+    desc:'已是最新。检查完毕，所有文件 sha 一致、零传输。静默态：只刷「上次检查时间」，不弹提示。' },
+  { id:'ok',       x:720, y:210, w:130, h:58, label:'ok',       fill:'var(--s-ok)',
+    desc:'已同步。本轮有推送/拉取/删除且成功。可短暂提示并展示条数。' },
+  { id:'error',    x:395, y:440, w:130, h:58, label:'error',    fill:'var(--s-err)',
+    desc:'失败。冲突重试 3 次仍 409，或网络 / token(401) / 限流(403) / 404 异常。非终态，下一轮自动重试。',
+    recovery:[
+      '看错误文案：冲突 / 401 / 403 / 网络 / 404，定位根因',
+      '冲突：停掉一端编辑 → 点「重试」或等轮询，通常一次收敛；注意 LWW 可能覆盖较旧本地编辑',
+      '401 token 失效：去 GitHub 后台换新 PAT，填回配置',
+      '403 / 429 限流：等限流窗口过去，自动恢复',
+      '网络错误：恢复网络后手动同步',
+      '404：检查 config.repo / config.branch 是否正确',
+      'error 不是终态：下一轮触发（轮询或手动）会自动再试'
+    ] },
+];
+const S = Object.fromEntries(STATES.map(s => [s.id, s]));
+const EDGES = [
+  { from:'idle',     to:'syncing',  ec:'var(--t-blue)',   label:'触发·启用·配置全' },
+  { from:'idle',     to:'off',      ec:'var(--t-black)',  label:'禁用/配置不全' },
+  { from:'off',      to:'syncing',  ec:'var(--t-blue)',   label:'重新启用触发',  curve:60 },
+  { from:'syncing',  to:'uptodate', ec:'var(--t-green)',  label:'sha全一致·无传输' },
+  { from:'syncing',  to:'ok',       ec:'var(--t-green)',  label:'有传输成功' },
+  { from:'syncing',  to:'error',    ec:'var(--t-red)',    label:'冲突耗尽/异常' },
+  { from:'syncing',  to:'syncing',  ec:'var(--t-yellow)', label:'冲突重试<3',     loop:true },
+  { from:'uptodate', to:'syncing',  ec:'var(--t-blue)',   label:'下一轮触发',     curve:-70 },
+  { from:'ok',       to:'syncing',  ec:'var(--t-blue)',   label:'下一轮触发',     curve:-70 },
+  { from:'error',    to:'syncing',  ec:'var(--t-blue)',   label:'下一轮触发',     curve:70 },
+];
+const ECNAME = { 'var(--t-blue)':'蓝','var(--t-green)':'绿','var(--t-yellow)':'黄','var(--t-red)':'红','var(--t-black)':'黑' };
+const MARK = { 't-blue':'#2563eb','t-green':'#16a34a','t-yellow':'#d97706','t-red':'#dc2626','t-black':'#374151' };
+const SCOLOR = { 'var(--s-idle)':'#94a3b8','var(--s-off)':'#374151','var(--s-sync)':'#2563eb','var(--s-up)':'#16a34a','var(--s-ok)':'#22c55e','var(--s-err)':'#dc2626' };
+let styleMode = 'pill';
+
+function center(n){ return { x:n.x+n.w/2, y:n.y+n.h/2 }; }
+function border(n, tx, ty){
+  const c = center(n), dx = tx-c.x, dy = ty-c.y, hw=n.w/2, hh=n.h/2;
+  if(dx===0&&dy===0) return c;
+  const scale = 1/Math.max(Math.abs(dx)/hw, Math.abs(dy)/hh);
+  return { x:c.x+dx*scale, y:c.y+dy*scale };
+}
+
+const nodeEls = {}, edgeEls = [], edgeRingEls = [];
+let selectedId = null, currentId = 'idle', playing = false, playTimer = null, playIdx = 0;
+const PLAYLIST = [0,3,7,4,8,6,5,9]; // idle→syncing→uptodate→syncing→ok→syncing→error→syncing
+
+function render(){
+  const showLabels = document.getElementById('toggleLabels').checked;
+  let defs = '<defs>';
+  Object.entries(MARK).forEach(([k,col])=>{
+    defs += `<marker id="arrow-${k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${col}"/></marker>`;
+  });
+  defs += '</defs>';
+  let svg = defs + `<circle id="token" r="8" fill="#fff" stroke="#111" stroke-width="2.5" style="display:none"/>`;
+  EDGES.forEach((e,i)=>{
+    const mk = e.ec.replace('var(','').replace(')','').replace('--','');
+    const a=S[e.from], b=S[e.to];
+    if(e.loop){
+      const x1=a.x+a.w/2, y1=a.y, x2=a.x+a.w/2+34;
+      const d=`M ${x1} ${y1} C ${x1} ${y1-46}, ${x2} ${y1-46}, ${x2} ${y1}`;
+      svg+=`<path id="edge-${i}" class="edge" stroke="${MARK[mk]}" d="${d}" marker-end="url(#arrow-${mk})"/>`;
+      if(showLabels) svg+=labelAt(x2+10, y1-40, e.label);
+    } else {
+      const ca=center(a), cb=center(b), pa=border(a,cb.x,cb.y), pb=border(b,ca.x,ca.y);
+      let d;
+      if(e.curve){
+        const mx=(pa.x+pb.x)/2, my=(pa.y+pb.y)/2, dx=pb.x-pa.x, dy=pb.y-pa.y, len=Math.hypot(dx,dy)||1;
+        const cxp=mx+(-dy/len)*e.curve, cyp=my+(dx/len)*e.curve;
+        d=`M ${pa.x} ${pa.y} Q ${cxp} ${cyp} ${pb.x} ${pb.y}`;
+        if(showLabels) svg+=labelAt(cxp, cyp-6, e.label);
+      } else {
+        d=`M ${pa.x} ${pa.y} L ${pb.x} ${pb.y}`;
+        if(showLabels) svg+=labelAt((pa.x+pb.x)/2, (pa.y+pb.y)/2-8, e.label);
+      }
+      svg+=`<path id="edge-${i}" class="edge" stroke="${MARK[mk]}" d="${d}" marker-end="url(#arrow-${mk})"/>`;
+    }
+  });
+  STATES.forEach(s=>{
+    const c=center(s);
+    svg+=`<g id="node-${s.id}"><rect class="node-box" fill="${SCOLOR[s.fill]}" x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="12"/>`+
+         `<text class="node-text" x="${c.x}" y="${c.y}">${s.label}</text>`+
+         `<rect class="node-ring" x="${s.x-3}" y="${s.y-3}" width="${s.w+6}" height="${s.h+6}" rx="15"/></g>`;
+  });
+  document.getElementById('sm').innerHTML = svg;
+  EDGES.forEach((e,i)=> edgeEls[i]=document.getElementById('edge-'+i));
+  STATES.forEach(s=> nodeEls[s.id]=document.getElementById('node-'+s.id));
+  STATES.forEach(s=> nodeEls[s.id].addEventListener('click', ()=> onClick(s.id)));
+  applyMode();
+}
+function labelAt(x,y,text){
+  const w=Math.max(54, text.length*7+12);
+  return `<g><rect class="edge-label-bg" x="${x-w/2}" y="${y-9}" width="${w}" height="18" rx="9"/>`+
+         `<text class="edge-label" x="${x}" y="${y+3}" text-anchor="middle">${text}</text></g>`;
+}
+
+/* ---------- 交互：点击状态联动 ---------- */
+function onClick(id){
+  selectedId = id;
+  currentId = id;
+  const connected = new Set();
+  EDGES.forEach((e,i)=>{ if(e.from===id||e.to===id){ connected.add(i); } });
+  EDGES.forEach((e,i)=>{
+    edgeEls[i].classList.toggle('dim', !connected.has(i));
+    edgeEls[i].classList.toggle('hl', connected.has(i));
+  });
+  STATES.forEach(s=>{
+    const ring=nodeEls[s.id].querySelector('.node-ring');
+    ring.classList.toggle('on', s.id===id);
+    const box=nodeEls[s.id].querySelector('.node-box');
+    const linked = s.id===id || EDGES.some(e=> (e.from===id&&e.to===s.id)||(e.to===id&&e.from===s.id));
+    box.style.opacity = linked ? '1' : '.25';
+  });
+  renderPanel(id);
+  renderBar(id);
+  logEvent(id, `查看状态 ${id}`);
+  if(playing) restartPlay();
+}
+
+function renderPanel(id){
+  const s=S[id];
+  document.getElementById('pHex').style.background = SCOLOR[s.fill];
+  document.getElementById('pTitle').textContent = id;
+  document.getElementById('pDesc').textContent = s.desc;
+  const tx=document.getElementById('pTx'); tx.innerHTML='';
+  EDGES.filter(e=>e.from===id).forEach(e=>{
+    const row=document.createElement('div'); row.className='tx';
+    row.innerHTML=`<span class="chip" style="background:${e.ec}"></span><span class="arr">→ ${e.to}</span><span style="color:var(--muted)">（${ECNAME[e.ec]||''}）${e.label}</span>`;
+    tx.appendChild(row);
+  });
+  if(!tx.children.length) tx.innerHTML='<span class="desc">—（终态）</span>';
+  const reco=document.getElementById('pReco');
+  if(s.recovery){ reco.style.display='block'; const ol=document.getElementById('pRecoList'); ol.innerHTML=''; s.recovery.forEach(r=>{ const li=document.createElement('li'); li.textContent=r; ol.appendChild(li); }); }
+  else reco.style.display='none';
+}
+
+/* ---------- 模式 ---------- */
+const VERDESC = {
+  A:'A · 聚焦高亮：点击状态，仅高亮与它相关的转移、其余淡出，右侧给出含义/出口/恢复。适合理解单个状态。',
+  B:'B · 自动巡演：点「播放」，一个光点沿边流动，演示 idle→syncing→uptodate/ok/冲突→error→重试 的真实流程；点状态可随时跳转。',
+  C:'C · 事件日志：每次点击/转移在底部控制台打印带状态的时间线，像真实同步运行日志，适合排查。',
+};
+let mode='A';
+function applyMode(){
+  document.getElementById('verDesc').textContent = VERDESC[mode];
+  document.getElementById('playGrp').style.display = mode==='B' ? 'flex' : 'none';
+  if(mode!=='B' && playing) stopPlay();
+  if(mode!=='A'){
+    // 非聚焦模式：取消淡出，恢复正常显示
+    EDGES.forEach((_,i)=> edgeEls[i].classList.remove('dim','hl'));
+    STATES.forEach(s=>{ nodeEls[s.id].querySelector('.node-box').style.opacity='1'; });
+  }
+}
+document.querySelectorAll('[data-ver]').forEach(b=> b.addEventListener('click',()=>{
+  mode=b.dataset.ver;
+  document.querySelectorAll('[data-ver]').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  if(mode==='A' && selectedId) onClick(selectedId); else applyMode();
+}));
+
+/* ---------- 自动巡演 ---------- */
+function animateEdge(i, ms, cb){
+  const path=edgeEls[i], token=document.getElementById('token');
+  const len=path.getTotalLength();
+  token.style.display='block';
+  let start=null;
+  function frame(t){
+    if(start===null) start=t;
+    const p=Math.min(1,(t-start)/ms);
+    const pt=path.getPointAtLength(len*p);
+    token.setAttribute('cx',pt.x); token.setAttribute('cy',pt.y);
+    if(p<1) requestAnimationFrame(frame); else { token.style.display='none'; cb&&cb(); }
+  }
+  requestAnimationFrame(frame);
+}
+function playStep(){
+  if(!playing) return;
+  // 找一条从 currentId 出发的边（优先 PLAYLIST 顺序）
+  let idx = PLAYLIST.find(i=> EDGES[i].from===currentId);
+  if(idx===undefined) idx = EDGES.findIndex(e=> e.from===currentId);
+  if(idx<0){ idx = PLAYLIST[0]; }
+  const e=EDGES[idx];
+  // 高亮该边
+  EDGES.forEach((_,i)=> edgeEls[i].classList.toggle('hl', i===idx));
+  const from=e.from, to=e.to;
+  logEvent(to, `${from} → ${to} （${ECNAME[e.ec]||''}）${e.label}`);
+  animateEdge(idx, 650, ()=>{
+    currentId=to;
+    if(playing) playTimer=setTimeout(playStep, 350);
+  });
+}
+function startPlay(){
+  playing=true; document.getElementById('playBtn').textContent='⏸ 暂停巡演';
+  logEvent('syncing','▶ 开始巡演（从 '+currentId+'）');
+  playStep();
+}
+function stopPlay(){
+  playing=false; if(playTimer) clearTimeout(playTimer);
+  document.getElementById('playBtn').textContent='▶ 播放巡演';
+  document.getElementById('token').style.display='none';
+  EDGES.forEach((_,i)=> edgeEls[i].classList.remove('hl'));
+}
+function restartPlay(){ if(playing){ stopPlay(); startPlay(); } }
+document.getElementById('playBtn').addEventListener('click',()=> playing?stopPlay():startPlay());
+document.querySelectorAll('[data-style]').forEach(b=> b.addEventListener('click',()=>{
+  styleMode=b.dataset.style;
+  document.querySelectorAll('[data-style]').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  renderPreview(); renderBar(selectedId||'uptodate');
+}));
+
+/* ---------- 事件日志 ---------- */
+function logEvent(state, msg){
+  // 仅 C 模式 或 自动巡演播放中 记录到控制台，避免 A 聚焦模式被打扰
+  if(mode!=='C' && !playing) return;
+  const log=document.getElementById('log');
+  const now=new Date();
+  const ts=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const ln=document.createElement('div'); ln.className='ln';
+  ln.innerHTML=`<span class="t">[${ts}]</span> <span class="st" style="color:${S[state]?SCOLOR[S[state].fill]:'#888'}">${state}</span> ${msg}`;
+  log.appendChild(ln); log.scrollTop=log.scrollHeight;
+}
+
+/* ---------- 主题 / 标签 ---------- */
+document.querySelectorAll('[data-theme-btn]').forEach(btn=> btn.addEventListener('click',()=>{
+  document.body.dataset.theme=btn.dataset.themeBtn;
+  document.querySelectorAll('[data-theme-btn]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); render(); if(selectedId) onClick(selectedId);
+}));
+document.getElementById('toggleLabels').addEventListener('change', ()=>{ render(); if(selectedId) onClick(selectedId); });
+
+render();
+
+/* ---------- 个人管理台 · 实际状态指示器预览 ---------- */
+const PREVIEW = [
+  { id:'idle',     name:'空闲',     c:'var(--s-idle)', meta:'未开始同步',            ring:true },
+  { id:'off',      name:'已关闭',   c:'var(--s-off)',  meta:'未启用 / 配置不全',      ring:false },
+  { id:'syncing',  name:'同步中',   c:'var(--s-sync)', meta:'正在检查…',              pulse:true },
+  { id:'uptodate', name:'已是最新', c:'var(--s-up)',   meta:'上次检查 12:30',          ring:false },
+  { id:'ok',       name:'已同步',   c:'var(--s-ok)',   meta:'上传 2 · 拉取 1',         ring:false },
+  { id:'error',    name:'同步失败', c:'var(--s-err)',  meta:'冲突重试 3 次',           retry:true },
+];
+function pillHTML(p){
+  const col = SCOLOR[p.c] || '#888';
+  const dotCls = 'sdot' + (p.pulse?' pulse':'') + (p.ring?' ring':'');
+  const dotStyle = p.ring ? `background:transparent;border:2px solid ${col}` : `background:${col}`;
+  const meta = p.meta ? `<span class="status-meta">${p.meta}</span>` : '';
+  return `<span class="status-pill"><span class="${dotCls}" style="${dotStyle}"></span>`+
+         `<span>${p.name}</span>${meta}`+
+         (p.retry?`<button class="btn-retry">重试</button>`:'')+`</span>`;
+}
+function badgeHTML(p){
+  const col = SCOLOR[p.c] || '#888';
+  return `<span class="status-badge" style="background:${col}">${p.name}</span>`+
+         (p.retry?`<button class="btn-retry" style="margin-left:8px">重试</button>`:'');
+}
+function dotOnlyHTML(p){
+  const col = SCOLOR[p.c] || '#888';
+  const dotCls = 'sdot' + (p.pulse?' pulse':'') + (p.ring?' ring':'');
+  const dotStyle = p.ring ? `background:transparent;border:2px solid ${col}` : `background:${col}`;
+  return `<span class="status-dot" title="${p.name}"><span class="${dotCls}" style="${dotStyle}"></span></span>`;
+}
+function renderPreview(){
+  document.getElementById('prevCards').innerHTML =
+    PREVIEW.map(p=> styleMode==='badge' ? badgeHTML(p) : styleMode==='app' ? dotOnlyHTML(p) : pillHTML(p)).join('');
+}
+function renderBar(id){
+  const p = PREVIEW.find(x=>x.id===id) || PREVIEW[3];
+  document.getElementById('livePill').innerHTML = styleMode==='badge' ? badgeHTML(p) : styleMode==='app' ? dotOnlyHTML(p) : pillHTML(p);
+}
+
+renderPreview();
+renderBar('uptodate');
+</script>
+</body>
+</html>

@@ -1,13 +1,13 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import type { Article, ColorKey, Config, Manifest, SyncPhase, Todo, TodoStatus, WorkbenchData } from '@/types'
+import type { Article, ColorKey, Config, SyncPhase, Todo, TodoStatus, WorkbenchData } from '@/types'
 import { slug } from '@/lib/slug'
 import { dedupTitle, renameRefs } from '@/lib/links'
 import { cleanupTombstones } from '@/services/sync/serialize'
 import { createSyncEngine, type SyncAdapter } from '@/services/sync/engine'
+import { fetchIndex } from '@/services/github/listDir'
 import {
   fetchArticles,
-  fetchManifest,
   fetchTodos,
   publishToMirror,
   pushRemote,
@@ -20,7 +20,7 @@ import { createStorageLayer } from '@/services/storage/storageLayer'
 import { createImageCloudLayer } from '@/services/image'
 
 const DATA_KEY = 'wb.data.v1'
-const MANIFEST_SHA_KEY = 'wb.manifestSha.v1'
+const SYNC_STATE_KEY = 'wb.syncState.v1'
 const CFG_KEY = 'wb.cfg.v1'
 
 /**
@@ -88,12 +88,20 @@ function loadConfig(): Config {
   return { enabled: false, repo: '', branch: 'main', path: '', token: '', poll: 20000, apiBase: 'https://api.github.com' }
 }
 
-function loadManifestSha(): string | undefined {
+function loadSyncState(): Record<string, string> {
   try {
-    const raw = localStorage.getItem(MANIFEST_SHA_KEY)
-    return raw ? raw : undefined
+    const raw = localStorage.getItem(SYNC_STATE_KEY)
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {}
   } catch {
-    return undefined
+    return {}
+  }
+}
+
+function saveSyncState(state: Record<string, string>): void {
+  try {
+    localStorage.setItem(SYNC_STATE_KEY, JSON.stringify(state))
+  } catch {
+    /* 忽略 */
   }
 }
 
@@ -118,8 +126,14 @@ function mergeLWW<T extends { id: string; updatedAt: number }>(current: T[], inc
 export const useDataStore = defineStore('data', () => {
   const data = ref<WorkbenchData>(loadData())
   const dirty = ref(false)
-  const manifestSha = ref<string | undefined>(loadManifestSha())
+  const syncState = ref<Record<string, string>>(loadSyncState())
   const phase = ref<SyncPhase>('idle')
+  const lastSyncAt = ref<number>(0)
+  const lastSyncMeta = ref<{ pulled: number; pushedN: number; deleted: number }>({
+    pulled: 0,
+    pushedN: 0,
+    deleted: 0,
+  })
 
   const todos = computed(() => data.value.todos)
   const articles = computed(() => data.value.articles)
@@ -311,13 +325,35 @@ export const useDataStore = defineStore('data', () => {
     isEnabled: () => loadConfig().enabled,
     getLocalArticles: () => data.value.articles,
     getLocalTodos: () => data.value.todos,
-    getLocalManifestSha: () => manifestSha.value,
-    applyRemote(remoteArticles: Article[], _manifest: Manifest) {
+    getSyncState: () => syncState.value,
+    setSyncState: (state: Record<string, string>) => {
+      syncState.value = state
+      saveSyncState(state)
+    },
+    purgeLocal: (id: string, kind: 'article' | 'todo') => {
+      if (kind === 'article') {
+        const i = data.value.articles.findIndex((a) => a.id === id)
+        if (i < 0) return
+        data.value.articles = [
+          ...data.value.articles.slice(0, i),
+          ...data.value.articles.slice(i + 1),
+        ]
+        persist()
+        void db.deleteArticle(id)
+      } else {
+        const i = data.value.todos.findIndex((t) => t.id === id)
+        if (i < 0) return
+        data.value.todos = [...data.value.todos.slice(0, i), ...data.value.todos.slice(i + 1)]
+        persist()
+        void db.deleteTodo(id)
+      }
+    },
+    applyRemote(remoteArticles: Article[]) {
       data.value.articles = remoteArticles
       persist()
       void db.saveArticles(remoteArticles)
     },
-    applyRemoteTodos(remoteTodos: Todo[], _manifest: Manifest) {
+    applyRemoteTodos(remoteTodos: Todo[]) {
       data.value.todos = remoteTodos
       persist()
       void db.saveTodos(remoteTodos)
@@ -326,18 +362,15 @@ export const useDataStore = defineStore('data', () => {
       phase.value = p
       // Bug #3 修复：error 时落库错误信息；ok 时清空避免老错误粘连
       lastSyncError.value = p === 'error' ? errorMsg || '未知同步错误' : ''
+      // uptodate/ok 视为「已检查」，刷新上次检查时间供状态指示器展示
+      if (p === 'uptodate' || p === 'ok') lastSyncAt.value = Date.now()
     },
-    setManifestSha: (sha: string) => {
-      manifestSha.value = sha
-      try {
-        localStorage.setItem(MANIFEST_SHA_KEY, sha)
-      } catch {
-        /* 忽略 */
-      }
+    setSyncMeta: (info) => {
+      lastSyncMeta.value = info
     },
   }
 
-  const engine = createSyncEngine(adapter, { fetchManifest, fetchArticles, fetchTodos, pushRemote })
+  const engine = createSyncEngine(adapter, { fetchIndex, fetchArticles, fetchTodos, pushRemote })
 
   // P1 ③ StorageLayer：Todo/Article 共用「本地 IDB + 远端同步」双写路径，store 统一经它落盘/触发同步
   // P2 ⑥ 图云层：按 config 在「极简（本地 IDB）/ 同步（git images/）」间路由，作为图片存储唯一隔离面
@@ -454,6 +487,8 @@ export const useDataStore = defineStore('data', () => {
     data,
     dirty,
     phase,
+    lastSyncAt,
+    lastSyncMeta,
     lastSyncError,
     todos,
     articles,

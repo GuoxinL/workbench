@@ -64,4 +64,4 @@ export interface WorkbenchData {
   updatedAt: number
 }
 
-export type SyncPhase = 'idle' | 'syncing' | 'ok' | 'error' | 'off'
+export type SyncPhase = 'idle' | 'off' | 'syncing' | 'uptodate' | 'ok' | 'error'

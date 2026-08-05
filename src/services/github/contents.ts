@@ -1,45 +1,56 @@
-import type { Article, Config, Manifest, ManifestEntry, Todo } from '@/types'
+import type { Article, Config, Todo } from '@/types'
 import { parseFrontmatter, serializeFrontmatter } from '@/lib/markdown/frontmatter'
 import { TodoSchema } from '@/services/db/schema'
 import { ConflictError, deleteFile, getFile, putFile, putFileBase64 } from './repoFile'
-import { entryOf, getManifest, putManifest } from './manifest'
+import { GithubError } from './client'
+import type { RemoteIndex } from './listDir'
 import { arrayBufferToBase64, sha256Hex } from '@/services/image/hash'
 
-/**
- * 拉取远端**轻量索引**（manifest.json，单次请求，不含任何正文）。
- *
- * 索引驱动同步（P2 ⑤）的第一步：先只取索引，与本地做 LWW 比对定出差异 id，
- * 再按 id 差分 GET/PUT，避免每轮把全部 kb/todos 正文都拉一遍。
- */
-export async function fetchManifest(config: Config): Promise<{ manifest: Manifest; sha: string } | null> {
-  return getManifest(config)
+/** 把文章序列化为 `kb/<id>.md` 的正文（frontmatter + 正文），与 pushRemote 写入字节一致。 */
+export function serializeArticle(a: Article): string {
+  return serializeFrontmatter(
+    {
+      id: a.id,
+      title: a.title,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+      deleted: a.deleted,
+      fromTodo: a.fromTodo,
+      tags: a.tags,
+      publish: a.published ?? false,
+    },
+    a.content,
+  )
 }
+
+/** 把待办序列化为 `todos/<id>.json`（确定性 JSON，供本地 sha 计算与远端写入共用）。 */
+export function serializeTodo(t: Todo): string {
+  return JSON.stringify(t, null, 2)
+}
+
+/** 现拉目录树索引（替代旧中央 manifest.json 读取）。实现见 ./listDir。 */
+export type { RemoteIndex }
 
 /**
  * 按 id 差分拉取文章正文（`kb/<id>.md`，解析 frontmatter → Article）。
- * 墓碑条目不发请求：删除靠 manifest 索引传播，正文无需读取。
+ * 正文自带全部元数据（id/title/updatedAt/...），无需再依赖远端索引补充。
+ * 墓碑条目由引擎层负责 DELETE，这里只拉存活文件（远端不存在则跳过）。
  */
-export async function fetchArticles(
-  ids: string[],
-  index: Record<string, ManifestEntry>,
-  config: Config,
-): Promise<Article[]> {
+export async function fetchArticles(ids: string[], config: Config): Promise<Article[]> {
   const out: Article[] = []
   for (const id of ids) {
-    const entry = index[id]
-    if (!entry || entry.deleted) continue
     const file = await getFile(`kb/${id}.md`, config)
     if (!file) continue
     const { data, content } = parseFrontmatter(file.content)
     out.push({
-      id: entry.id,
-      title: entry.title,
+      id: String((data as any).id ?? id),
+      title: String((data as any).title ?? ''),
       content,
       fromTodo: String((data as any).fromTodo ?? ''),
       tags: Array.isArray((data as any).tags) ? ((data as any).tags as unknown[]).map(String) : [],
-      createdAt: Number((data as any).createdAt ?? entry.updatedAt),
-      updatedAt: entry.updatedAt,
-      deleted: false,
+      createdAt: Number((data as any).createdAt ?? 0),
+      updatedAt: Number((data as any).updatedAt ?? 0),
+      deleted: Boolean((data as any).deleted),
       published: Boolean((data as any).publish),
     })
   }
@@ -47,18 +58,12 @@ export async function fetchArticles(
 }
 
 /**
- * 按 id 差分拉取待办（`todos/<id>.json`，P1 ④ 的远端单文件化）。
+ * 按 id 差分拉取待办（`todos/<id>.json`）。
  * 逐条经 Zod 校验：远端不可信，脏数据丢单条而非让整轮同步失败。
  */
-export async function fetchTodos(
-  ids: string[],
-  index: Record<string, ManifestEntry>,
-  config: Config,
-): Promise<Todo[]> {
+export async function fetchTodos(ids: string[], config: Config): Promise<Todo[]> {
   const out: Todo[] = []
   for (const id of ids) {
-    const entry = index[id]
-    if (!entry || entry.deleted) continue
     const file = await getFile(`todos/${id}.json`, config)
     if (!file) continue
     let parsed: unknown
@@ -69,129 +74,143 @@ export async function fetchTodos(
     }
     const ok = TodoSchema.safeParse(parsed)
     if (!ok.success) continue // 字段漂移/脏数据：丢弃单条，不污染 LWW 合并
-    out.push({ ...ok.data, updatedAt: entry.updatedAt })
+    out.push(ok.data)
   }
   return out
 }
 
 export interface PushInput {
-  /** 合并后的本地全量文章；实际只有 `articleIds` 命中的会被 PUT */
+  /** 合并后的本地全量文章；实际只有 `pushIds` / `conflicts` 命中的会被 PUT */
   articles: Article[]
-  manifestSha: string | undefined
-  /** 差分推送的文章 id 集合（P2 ⑤）；省略 = 全量推（首次同步 / 简单调用） */
-  articleIds?: string[]
-  /** 待办（P1 ④）：远端单文件化 todos/<id>.json；未传时不改动远端待办 */
+  /** 需 PUT 的文章 id 集合（push + conflict 合并结果） */
+  pushIds: string[]
+  /** 合并后的本地全量待办；未传时不改动远端待办 */
   todos?: Todo[]
-  /** 差分推送的待办 id 集合；省略 = 全量推 */
-  todoIds?: string[]
+  /** 需 PUT 的待办 id 集合（push + conflict 合并结果） */
+  todoPushIds?: string[]
+  /** 需删除（远端已有、本地已软删）的文章 id 集合 */
+  delIds: string[]
+  /** 需删除的待办 id 集合 */
+  todoDelIds?: string[]
   /**
-   * 远端 manifest 基线：未被推送的条目**原样保留**（连同其 blob sha 与墓碑标记）。
-   * 缺省则从空索引重建（等价于全量推）。
+   * 路径 → 当前远端 blob sha（乐观锁）：PUT/DELETE 带它才能更新；缺失视为新建（或孤儿文件兜底）。
    */
-  baseManifest?: Manifest
+  treeShaByPath: Record<string, string>
 }
 
 export interface PushResult {
-  /** 成功推送后的新 manifest（含各文件 sha） */
-  manifest: Manifest
-  /** 发生冲突的 id；非 null 时表示需重新拉取合并后重试（S10） */
+  /** 发生冲突的文件 path（非 null 时表示需重新拉取合并后重试） */
   conflictSlug: string | null
-  /** 推送后 manifest.json 的 sha（供下次乐观锁，对应 S10） */
-  manifestSha: string
+  /** 成功 PUT 的文件：path → 新 blob sha（供更新本地基线） */
+  shaByPath: Record<string, string>
+  /** 成功 DELETE 的文件 path 列表 */
+  deletedPaths: string[]
 }
 
 /**
- * 差分推送本地数据到远端（P2 ⑤）：只 PUT `articleIds` / `todoIds` 命中的文件，
- * 再写一次 manifest.json。
+ * 差分推送本地数据到远端：只 PUT `pushIds` / `todoPushIds` 命中的文件，DELETE `delIds` 命中的文件。
  *
- * manifest 以 `baseManifest`（刚拉到的远端索引）为基线**增量覆盖**，而非由本地全量重建——
- * 这样未推送的条目会连同其 blob sha 与墓碑标记原样保留：既不会把 sha 洗成空串，
- * 也不会用本地陈旧副本把远端墓碑"复活"。墓碑本身照常推送（`deleted: true`），删除经索引传播。
+ * 乐观锁来自 `treeShaByPath`（刚拉到的目录树 sha），而非任何中央文件——这是消除
+ * manifest.json 写入热点的关键：每次同步从「写 1 个大索引」变成「只写真正变化的 N 个独立文件」。
  */
 export async function pushRemote(input: PushInput, config: Config): Promise<PushResult> {
-  const base = input.baseManifest
-  const manifest: Manifest = {
-    version: 1,
-    updatedAt: Date.now(),
-    articles: { ...(base?.articles ?? {}) },
-    todos: { ...(base?.todos ?? {}) },
-  }
-  const articleIds = new Set(input.articleIds ?? input.articles.map((a) => a.id))
-  const todoIds = new Set(input.todoIds ?? (input.todos ?? []).map((t) => t.id))
+  const shaByPath: Record<string, string> = {}
+  const deletedPaths: string[] = []
+  const articleById = new Map(input.articles.map((a) => [a.id, a]))
   let conflictSlug: string | null = null
 
-  for (const a of input.articles) {
-    if (!articleIds.has(a.id)) continue
-    const s = a.id
-    const baseSha = base?.articles[s]?.sha || undefined
-    manifest.articles[s] = entryOf(a)
-    const md = serializeFrontmatter(
-      {
-        id: a.id,
-        title: a.title,
-        createdAt: a.createdAt,
-        updatedAt: a.updatedAt,
-        deleted: a.deleted,
-        fromTodo: a.fromTodo,
-        tags: a.tags,
-        publish: a.published ?? false,
-      },
-      a.content,
-    )
+  for (const id of input.pushIds) {
+    const a = articleById.get(id)
+    if (!a) continue
+    const path = `kb/${id}.md`
+    const lockSha = input.treeShaByPath[path]
     try {
-      // 已存在文件需带远端 blob sha 才能更新；缺失则该文件视为新建（GitHub 对更新缺失 sha 返回 422）
-      const sha = await putFile(`kb/${s}.md`, md, baseSha, config, `update ${a.title}`)
-      manifest.articles[s].sha = sha
+      shaByPath[path] = await putFile(path, serializeArticle(a), lockSha, config, `update ${a.title}`)
     } catch (e) {
-      if (e instanceof ConflictError && baseSha === undefined) {
-        // 文件可能已存在但未被 manifest 跟踪（如外部直写产生的孤儿文件）：
-        // 取远端当前 blob sha 重试一次，避免 422「sha wasn't supplied」
-        const cur = await getFile(`kb/${s}.md`, config)
-        if (cur && cur.sha) {
-          const sha = await putFile(`kb/${s}.md`, md, cur.sha, config, `update ${a.title}`)
-          manifest.articles[s].sha = sha
+      if (e instanceof ConflictError && !lockSha) {
+        // 孤儿文件兜底：远端已存在但未被目录树跟踪（理论上不会，因我们现拉索引），取当前 sha 重试一次
+        const cur = await getFile(path, config)
+        if (cur?.sha) {
+          shaByPath[path] = await putFile(path, serializeArticle(a), cur.sha, config, `update ${a.title}`)
           continue
         }
       }
       if (e instanceof ConflictError) {
-        conflictSlug = s
+        conflictSlug = path
         break
       }
       throw e
     }
   }
 
-  for (const t of input.todos ?? []) {
+  const todoById = new Map((input.todos ?? []).map((t) => [t.id, t]))
+  for (const id of input.todoPushIds ?? []) {
     if (conflictSlug) break
-    if (!todoIds.has(t.id)) continue
-    const s = t.id
-    const baseSha = base?.todos?.[s]?.sha || undefined
-    manifest.todos![s] = entryOf(t)
-    const json = JSON.stringify(t, null, 2)
+    const t = todoById.get(id)
+    if (!t) continue
+    const path = `todos/${id}.json`
+    const lockSha = input.treeShaByPath[path]
     try {
-      const sha = await putFile(`todos/${s}.json`, json, baseSha, config, `update todo ${t.title}`)
-      manifest.todos![s].sha = sha
+      shaByPath[path] = await putFile(path, serializeTodo(t), lockSha, config, `update todo ${t.title}`)
     } catch (e) {
-      if (e instanceof ConflictError && baseSha === undefined) {
-        // 同 kb 的孤儿文件兜底：远端已存在但未被 manifest 跟踪时，取当前 sha 重试一次
-        const cur = await getFile(`todos/${s}.json`, config)
-        if (cur && cur.sha) {
-          const sha = await putFile(`todos/${s}.json`, json, cur.sha, config, `update todo ${t.title}`)
-          manifest.todos![s].sha = sha
+      if (e instanceof ConflictError && !lockSha) {
+        const cur = await getFile(path, config)
+        if (cur?.sha) {
+          shaByPath[path] = await putFile(path, serializeTodo(t), cur.sha, config, `update todo ${t.title}`)
           continue
         }
       }
       if (e instanceof ConflictError) {
-        conflictSlug = s
+        conflictSlug = path
         break
       }
       throw e
     }
   }
 
-  if (conflictSlug) return { manifest, conflictSlug, manifestSha: '' }
-  const newSha = await putManifest(manifest, input.manifestSha, config)
-  return { manifest, conflictSlug: null, manifestSha: newSha }
+  for (const id of input.delIds) {
+    if (conflictSlug) break
+    const path = `kb/${id}.md`
+    const lockSha = input.treeShaByPath[path]
+    if (!lockSha) continue // 远端已无该文件，无需删除
+    try {
+      await deleteFile(path, lockSha, config, `delete ${id}`)
+      deletedPaths.push(path)
+    } catch (e) {
+      if (e instanceof GithubError && e.code === 'notfound') {
+        deletedPaths.push(path) // 已被删，等同成功
+        continue
+      }
+      if (e instanceof ConflictError) {
+        conflictSlug = path
+        break
+      }
+      throw e
+    }
+  }
+
+  for (const id of input.todoDelIds ?? []) {
+    if (conflictSlug) break
+    const path = `todos/${id}.json`
+    const lockSha = input.treeShaByPath[path]
+    if (!lockSha) continue
+    try {
+      await deleteFile(path, lockSha, config, `delete todo ${id}`)
+      deletedPaths.push(path)
+    } catch (e) {
+      if (e instanceof GithubError && e.code === 'notfound') {
+        deletedPaths.push(path)
+        continue
+      }
+      if (e instanceof ConflictError) {
+        conflictSlug = path
+        break
+      }
+      throw e
+    }
+  }
+
+  return { conflictSlug, shaByPath, deletedPaths }
 }
 
 /** 构造公开镜像库用的 config：把 repo 换成 publicRepo，其余（token/apiBase/branch）沿用。 */
@@ -203,8 +222,8 @@ export function mirrorConfig(config: Config): Config | null {
 }
 
 /**
- * 把一张图片推到 git `images/<sha>.<ext>`（P2 ⑥ 同步模式），返回引用 key `images/<sha>.<ext>`。
- * key 由 blob 内容 SHA-256 决定 ⇒ 同图幂等，重复粘贴不会在仓库堆出多份；二进制经 base64 直传，不二次编码。
+ * 把一张图片推到 git `images/<sha>.<ext>`，返回引用 key `images/<sha>.<ext>`。
+ * 内容寻址 ⇒ 同图幂等；不进索引，与文章/待办同步路径互不干扰。
  */
 export async function pushImage(blob: Blob, config: Config): Promise<string> {
   const buf = await blob.arrayBuffer()
@@ -212,11 +231,12 @@ export async function pushImage(blob: Blob, config: Config): Promise<string> {
   const raw = blob.type.match(/image\/([a-zA-Z0-9.+-]+)/)?.[1] ?? 'png'
   const ext = raw.toLowerCase() === 'jpeg' ? 'jpg' : raw.toLowerCase()
   const path = `images/${hash}.${ext}`
+  // 图片二进制经 base64 直传，不二次编码；不进索引，与文章/待办同步路径互不干扰
   await putFileBase64(path, arrayBufferToBase64(buf), undefined, config, `add image ${path}`)
   return path
 }
 
-/** 从 git 删除一张图（P2 ⑥ 回收）；文件不存在时静默。 */
+/** 从 git 删除一张图；文件不存在时静默。 */
 export async function deleteImage(key: string, config: Config): Promise<void> {
   if (!key.startsWith('images/')) return
   const file = await getFile(key, config)
@@ -228,18 +248,7 @@ export async function deleteImage(key: string, config: Config): Promise<void> {
 export async function publishToMirror(a: Article, config: Config): Promise<void> {
   const mc = mirrorConfig(config)
   if (!mc) throw new Error('未配置公开镜像仓库')
-  const md = serializeFrontmatter(
-    {
-      id: a.id,
-      title: a.title,
-      createdAt: a.createdAt,
-      updatedAt: a.updatedAt,
-      fromTodo: a.fromTodo,
-      tags: a.tags,
-      publish: true,
-    },
-    a.content,
-  )
+  const md = serializeArticle(a)
   // 镜像库不跟踪 sha 乐观锁（单一作者写），取远端 sha 后 PUT
   const cur = await getFile(`kb/${a.id}.md`, mc)
   await putFile(`kb/${a.id}.md`, md, cur?.sha, mc, `publish ${a.title}`)

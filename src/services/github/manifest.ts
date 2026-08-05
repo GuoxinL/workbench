@@ -1,5 +1,5 @@
 import type { Config, Manifest, ManifestEntry } from '@/types'
-import { getFile, putFile, ConflictError } from './repoFile'
+import { getFile } from './repoFile'
 
 export function emptyManifest(): Manifest {
   return { version: 1, updatedAt: Date.now(), articles: {}, todos: {} }
@@ -14,30 +14,13 @@ export function entryOf(
 }
 
 /**
- * 本地/远端差异，驱动同步引擎的拉取/推送调度。
- *
- * 以实体 id 为键，按 updatedAt 做 per-file LWW（Last-Write-Wins）比较：
- * - pull: 仅存在于远端，或远端 updatedAt 大于本地 → 需从远端拉取
- * - push: 仅存在于本地，或本地 updatedAt 大于远端 → 需推送到远端
- * - 两边都存在且 updatedAt 相等时，不拉也不推（无差异）
- */
-export interface ManifestDiff {
-  /** 需从远端拉取的 id（远端存在且本地缺失，或远端较新） */
-  pull: string[]
-  /** 需推送到远端的 id（本地存在且远端缺失，或本地较新） */
-  push: string[]
-}
-
-/**
- * 索引驱动同步的调度核心（P2 ⑤）：拿**本地实体数组**与**远端轻量索引**做 per-file LWW 比对，
- * 得出真正有差异的 id。同步只需据此 GET/PUT 这些文件，传输量从 O(N) 降到 O(差异数)。
- *
- * 只看 `updatedAt`，不读正文；相等视为无差异（既不拉也不推）。
+ * @deprecated 已被 `src/services/sync/diff.ts` 的 `planSync`（按 git blob sha 三态判定）取代。
+ * 仅保留以兼容旧测试；新同步不再使用 updatedAt 比较。
  */
 export function planDiff(
   local: Array<{ id: string; updatedAt: number }>,
   remoteIndex: Record<string, ManifestEntry> | undefined,
-): ManifestDiff {
+): { pull: string[]; push: string[] } {
   const remote = remoteIndex ?? {}
   const pull: string[] = []
   const push: string[] = []
@@ -56,7 +39,10 @@ export function planDiff(
   return { pull, push }
 }
 
-/** 读取 manifest.json；不存在或损坏返回 null。 */
+/**
+ * @deprecated 旧中央 `manifest.json` 已不再写入。本函数仅保留用于读取既有仓库的遗留 manifest
+ * （过渡期只读、不播种）。新同步改用 `listDir` 目录树索引，不再依赖此文件。
+ */
 export async function getManifest(config: Config): Promise<{ manifest: Manifest; sha: string } | null> {
   const f = await getFile('manifest.json', config)
   if (!f) return null
@@ -66,14 +52,5 @@ export async function getManifest(config: Config): Promise<{ manifest: Manifest;
     return { manifest: m, sha: f.sha }
   } catch {
     return null
-  }
-}
-
-export async function putManifest(manifest: Manifest, sha: string | undefined, config: Config): Promise<string> {
-  try {
-    return await putFile('manifest.json', JSON.stringify(manifest, null, 2), sha, config, 'update manifest')
-  } catch (e) {
-    if (e instanceof ConflictError) throw e
-    throw e
   }
 }

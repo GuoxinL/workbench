@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createSyncEngine, type SyncAdapter, type ContentsApi } from '../engine'
-import type { Article, Config, Manifest, ManifestEntry, SyncPhase, Todo } from '@/types'
-import { emptyManifest } from '@/services/github/manifest'
+import type { PushResult } from '@/services/github/contents'
+import type { Article, Config, SyncPhase, Todo } from '@/types'
+import { gitBlobSha } from '@/services/github/blobSha'
+import { serializeArticle } from '@/services/github/contents'
 
 const config: Config = {
   enabled: true,
@@ -13,16 +15,25 @@ const config: Config = {
   apiBase: 'https://x',
 }
 
-function makeAdapter(over: Partial<SyncAdapter> = {}): SyncAdapter & { phases: SyncPhase[]; applied: unknown[] } {
+function makeAdapter(over: Partial<SyncAdapter> = {}): SyncAdapter & {
+  phases: SyncPhase[]
+  applied: unknown[]
+  syncStates: Record<string, string>[]
+  purged: string[]
+} {
   const obj: any = {
     phases: [] as SyncPhase[],
     applied: [] as unknown[],
+    syncStates: [] as Record<string, string>[],
+    purged: [] as string[],
     getConfig: () => config,
     isEnabled: () => true,
     getLocalArticles: () => [],
-    getLocalManifestSha: () => undefined,
-    applyRemote: (a: Article[], m: Manifest) => obj.applied.push([a, m]),
+    getSyncState: () => ({}),
+    setSyncState: (m: Record<string, string>) => obj.syncStates.push(m),
+    applyRemote: (a: Article[]) => obj.applied.push(a),
     setPhase: (p: SyncPhase) => obj.phases.push(p),
+    purgeLocal: (id: string) => obj.purged.push(id),
   }
   return Object.assign(obj, over)
 }
@@ -30,62 +41,42 @@ function makeAdapter(over: Partial<SyncAdapter> = {}): SyncAdapter & { phases: S
 /** 默认「远端空、推送成功」的 ContentsApi 替身；按需覆盖单个方法。 */
 function makeContents(over: Partial<ContentsApi> = {}): ContentsApi {
   return {
-    fetchManifest: vi.fn(async () => null),
+    fetchIndex: vi.fn(async () => ({ articles: {}, todos: {} })),
     fetchArticles: vi.fn(async () => []),
     fetchTodos: vi.fn(async () => []),
-    pushRemote: vi.fn(async () => ({ manifest: emptyManifest(), conflictSlug: null, manifestSha: 'x' })),
+    pushRemote: vi.fn(async (): Promise<PushResult> => ({ conflictSlug: null, shaByPath: {}, deletedPaths: [] })),
     ...over,
   }
 }
 
-function entry(id: string, updatedAt: number, over: Partial<ManifestEntry> = {}): ManifestEntry {
-  return { id, title: id, updatedAt, deleted: false, sha: `${id}-sha`, ...over }
-}
-
 const localArticle: Article = {
-  id: '1',
-  title: 'A',
-  content: '',
-  fromTodo: '',
-  tags: [],
-  createdAt: 1,
-  updatedAt: 1,
-  deleted: false,
+  id: '1', title: 'A', content: '', fromTodo: '', tags: [], createdAt: 1, updatedAt: 1, deleted: false,
 }
 
 const localTodo: Todo = {
-  id: 't1',
-  title: '本地',
-  desc: '',
-  color: 'blue',
-  status: 'todo',
-  due: '',
-  time: 1,
-  articleId: '',
-  createdAt: 1,
-  updatedAt: 1,
-  deleted: false,
+  id: 't1', title: '本地', desc: '', color: 'blue', status: 'todo',
+  due: '', time: 1, articleId: '', createdAt: 1, updatedAt: 1, deleted: false,
 }
 
-describe('createSyncEngine', () => {
-  it('未启用 → off 且不拉取（S22）', async () => {
+describe('createSyncEngine（目录树索引 + 每文件 blob sha）', () => {
+  it('未启用 → off 且不拉取', async () => {
     const adapter = makeAdapter({ isEnabled: () => false })
     const contents = makeContents()
     const e = createSyncEngine(adapter, contents)
     const r = await e.sync()
-    expect(r).toEqual({ ok: true, merged: false, pushed: false })
+    expect(r).toEqual({ ok: true, merged: false, pushed: false, pulled: 0, pushedN: 0, deleted: 0 })
     expect((adapter as any).phases).toContain('off')
-    expect(contents.fetchManifest).not.toHaveBeenCalled()
+    expect(contents.fetchIndex).not.toHaveBeenCalled()
   })
 
   it('冲突重试：第 1 次冲突后成功（S10）', async () => {
     const adapter = makeAdapter({ getLocalArticles: () => [localArticle] })
     let calls = 0
     const contents = makeContents({
-      pushRemote: vi.fn(async () => {
+      pushRemote: vi.fn(async (): Promise<PushResult> => {
         calls++
-        if (calls === 1) return { manifest: emptyManifest(), conflictSlug: 'a', manifestSha: 'x' }
-        return { manifest: emptyManifest(), conflictSlug: null, manifestSha: 'x' }
+        if (calls === 1) return { conflictSlug: 'kb/1.md', shaByPath: {}, deletedPaths: [] }
+        return { conflictSlug: null, shaByPath: { 'kb/1.md': 'new' }, deletedPaths: [] }
       }),
     })
     const e = createSyncEngine(adapter, contents)
@@ -98,9 +89,9 @@ describe('createSyncEngine', () => {
     let fetchCount = 0
     const adapter = makeAdapter()
     const contents = makeContents({
-      fetchManifest: vi.fn(async () => {
+      fetchIndex: vi.fn(async () => {
         fetchCount++
-        return null
+        return { articles: {}, todos: {} }
       }),
     })
     const e = createSyncEngine(adapter, contents)
@@ -112,7 +103,7 @@ describe('createSyncEngine', () => {
   it('超过最大重试 → error（S10）', async () => {
     const adapter = makeAdapter({ getLocalArticles: () => [localArticle] })
     const contents = makeContents({
-      pushRemote: vi.fn(async () => ({ manifest: emptyManifest(), conflictSlug: 'a', manifestSha: 'x' })),
+      pushRemote: vi.fn(async (): Promise<PushResult> => ({ conflictSlug: 'kb/1.md', shaByPath: {}, deletedPaths: [] })),
     })
     const e = createSyncEngine(adapter, contents)
     const r = await e.sync()
@@ -120,34 +111,31 @@ describe('createSyncEngine', () => {
     expect((adapter as any).phases).toContain('error')
   })
 
-  it('推送以刚拉取的远端 manifest sha 为乐观锁基准，而非本地陈旧 sha（S10 修复）', async () => {
-    const adapter = makeAdapter({
-      getLocalArticles: () => [localArticle],
-      getLocalManifestSha: () => 'STALE_LOCAL_SHA',
-    })
+  it('推送以刚拉取的目录树 sha 作乐观锁基准', async () => {
+    const adapter = makeAdapter({ getLocalArticles: () => [localArticle] })
     const remoteSha = 'REMOTE_SHA_abc'
     const contents = makeContents({
-      fetchManifest: vi.fn(async () => ({ manifest: emptyManifest(), sha: remoteSha })),
-      pushRemote: vi.fn(async () => ({ manifest: emptyManifest(), conflictSlug: null, manifestSha: remoteSha })),
+      fetchIndex: vi.fn(async () => ({ articles: { '1': remoteSha }, todos: {} })),
+      fetchArticles: vi.fn(async () => [localArticle]),
+      pushRemote: vi.fn(async (): Promise<PushResult> => ({ conflictSlug: null, shaByPath: { 'kb/1.md': 'new' }, deletedPaths: [] })),
     })
     const e = createSyncEngine(adapter, contents)
     await e.sync()
-    expect((contents.pushRemote as any).mock.calls[0][0].manifestSha).toBe(remoteSha)
-    expect((contents.pushRemote as any).mock.calls[0][0].manifestSha).not.toBe('STALE_LOCAL_SHA')
+    const arg = (contents.pushRemote as any).mock.calls[0][0]
+    expect(arg.treeShaByPath['kb/1.md']).toBe(remoteSha)
   })
 
-  it('远端无 manifest（首次同步）时以 undefined 推送，不依赖本地 sha', async () => {
-    const adapter = makeAdapter({
-      getLocalArticles: () => [localArticle],
-      getLocalManifestSha: () => 'SOME_LOCAL_SHA',
-    })
+  it('首轮（远端空索引）本地文件按新建推送，treeSha 锁为 undefined', async () => {
+    const adapter = makeAdapter({ getLocalArticles: () => [localArticle] })
     const contents = makeContents()
     const e = createSyncEngine(adapter, contents)
     await e.sync()
-    expect((contents.pushRemote as any).mock.calls[0][0].manifestSha).toBeUndefined()
+    const arg = (contents.pushRemote as any).mock.calls[0][0]
+    expect(arg.treeShaByPath['kb/1.md']).toBeUndefined()
+    expect(arg.pushIds).toEqual(['1'])
   })
 
-  it('待办与文章同轮 LWW 合并并一起推送（P1 ④）', async () => {
+  it('待办与文章同轮 LWW 合并并一起推送（冲突合并语义）', async () => {
     const remoteTodo: Todo = { ...localTodo, title: '远端更新', updatedAt: 999 }
     const appliedTodos: Todo[][] = []
     const adapter = makeAdapter({
@@ -155,22 +143,19 @@ describe('createSyncEngine', () => {
       getLocalTodos: () => [localTodo],
       applyRemoteTodos: (t: Todo[]) => appliedTodos.push(t),
     })
-    const manifest: Manifest = { ...emptyManifest(), todos: { t1: entry('t1', 999) } }
     const contents = makeContents({
-      fetchManifest: vi.fn(async () => ({ manifest, sha: 'ms' })),
+      fetchIndex: vi.fn(async () => ({ articles: {}, todos: { t1: 'ts' } })),
       fetchTodos: vi.fn(async () => [remoteTodo]),
-      pushRemote: vi.fn(async () => ({ manifest: emptyManifest(), conflictSlug: null, manifestSha: 'ms2' })),
+      pushRemote: vi.fn(async (): Promise<PushResult> => ({ conflictSlug: null, shaByPath: { 'kb/1.md': 'n', 'todos/t1.json': 'nt' }, deletedPaths: [] })),
     })
     const e = createSyncEngine(adapter, contents)
     const r = await e.sync()
     // 远端 updatedAt 更大 → 远端胜出，并写回本地
     expect(appliedTodos[0][0].title).toBe('远端更新')
     expect(r.merged).toBe(true)
-    const pushArg = (contents.pushRemote as any).mock.calls[0][0]
-    expect(pushArg.todos[0].title).toBe('远端更新')
-    // 待办本地不领先 → 不在差分推送集合内
-    expect(pushArg.todoIds).toEqual([])
-    expect(pushArg.articleIds).toEqual(['1'])
+    const arg = (contents.pushRemote as any).mock.calls[0][0]
+    expect(arg.todoPushIds).toContain('t1')
+    expect(arg.pushIds).toEqual(['1'])
   })
 
   it('适配器未实现 getLocalTodos 时退化为纯文章同步（向后兼容）', async () => {
@@ -178,24 +163,24 @@ describe('createSyncEngine', () => {
     const contents = makeContents()
     const e = createSyncEngine(adapter, contents)
     await e.sync()
-    expect((contents.pushRemote as any).mock.calls[0][0].todos).toBeUndefined()
+    expect((contents.pushRemote as any).mock.calls[0][0].todoPushIds).toEqual([])
     expect(contents.fetchTodos).not.toHaveBeenCalled()
   })
 
-  // ── P2 ⑤ 索引驱动 ────────────────────────────────────
-  it('只 GET 索引判定有差异的文件，未变更的不拉正文（P2 ⑤）', async () => {
+  it('只 GET 索引判定有差异的文件（P2 ⑤ → 目录树索引），未变更的不拉正文', async () => {
     const stale: Article = { ...localArticle, id: 'old', updatedAt: 1 }
     const same: Article = { ...localArticle, id: 'same', updatedAt: 50 }
+    const lshOld = await gitBlobSha(serializeArticle(stale))
+    const lshSame = await gitBlobSha(serializeArticle(same))
     const adapter = makeAdapter({ getLocalArticles: () => [stale, same] })
-    const manifest: Manifest = {
-      ...emptyManifest(),
-      articles: {
-        old: entry('old', 999), // 远端更新 → 需拉
-        same: entry('same', 50), // 完全一致 → 不拉
-        fresh: entry('fresh', 5), // 本地没有 → 需拉
-      },
-    }
-    const contents = makeContents({ fetchManifest: vi.fn(async () => ({ manifest, sha: 'ms' })) })
+    const contents = makeContents({
+      fetchIndex: vi.fn(async () => ({
+        articles: { old: 'remote-other', same: lshSame, fresh: 'fresh-sha' },
+        todos: {},
+      })),
+    })
+    ;(adapter as any).getSyncState = () => ({ 'kb/old.md': lshOld, 'kb/same.md': lshSame })
+    ;(adapter as any).setSyncState = () => {}
     const e = createSyncEngine(adapter, contents)
     await e.sync()
     const ids = (contents.fetchArticles as any).mock.calls[0][0] as string[]
@@ -203,50 +188,58 @@ describe('createSyncEngine', () => {
     expect(ids).not.toContain('same')
   })
 
-  it('本地无领先变更时整轮不写远端，避免轮询刷空提交（P2 ⑤）', async () => {
+  it('sha 全一致 → 静默 uptodate，整轮不写远端（替代旧 ok 短路）', async () => {
     const same: Article = { ...localArticle, id: 'same', updatedAt: 50 }
+    const lshSame = await gitBlobSha(serializeArticle(same))
     const adapter = makeAdapter({ getLocalArticles: () => [same] })
-    const manifest: Manifest = { ...emptyManifest(), articles: { same: entry('same', 50) } }
-    const contents = makeContents({ fetchManifest: vi.fn(async () => ({ manifest, sha: 'ms' })) })
+    const contents = makeContents({
+      fetchIndex: vi.fn(async () => ({ articles: { same: lshSame }, todos: {} })),
+    })
+    ;(adapter as any).getSyncState = () => ({ 'kb/same.md': lshSame })
+    ;(adapter as any).setSyncState = () => {}
     const e = createSyncEngine(adapter, contents)
     const r = await e.sync()
     expect(contents.pushRemote).not.toHaveBeenCalled()
-    expect(r).toEqual({ ok: true, merged: false, pushed: false })
-    expect((adapter as any).phases).toContain('ok')
+    expect(r).toEqual({ ok: true, merged: false, pushed: false, pulled: 0, pushedN: 0, deleted: 0 })
+    expect((adapter as any).phases).toContain('uptodate')
   })
 
-  it('差分推送只带本地领先的 id，并把远端索引作为基线传下去（P2 ⑤）', async () => {
-    const ahead: Article = { ...localArticle, id: 'ahead', updatedAt: 999 }
-    const same: Article = { ...localArticle, id: 'same', updatedAt: 50 }
+  it('本地领先的 id 进入 pushIds，并以远端树 sha 作锁', async () => {
+    const ahead: Article = { ...localArticle, id: 'ahead', updatedAt: 999, content: 'changed' }
+    const same: Article = { ...localArticle, id: 'same', updatedAt: 50, content: 'same' }
+    const lshSame = await gitBlobSha(serializeArticle(same))
     const adapter = makeAdapter({ getLocalArticles: () => [ahead, same] })
-    const manifest: Manifest = {
-      ...emptyManifest(),
-      articles: { ahead: entry('ahead', 1), same: entry('same', 50) },
-    }
-    const contents = makeContents({ fetchManifest: vi.fn(async () => ({ manifest, sha: 'ms' })) })
+    const contents = makeContents({
+      fetchIndex: vi.fn(async () => ({ articles: { ahead: 'BASE_SHA', same: lshSame }, todos: {} })),
+    })
+    ;(adapter as any).getSyncState = () => ({ 'kb/ahead.md': 'BASE_SHA', 'kb/same.md': lshSame })
+    ;(adapter as any).setSyncState = () => {}
     const e = createSyncEngine(adapter, contents)
     await e.sync()
-    const pushArg = (contents.pushRemote as any).mock.calls[0][0]
-    expect(pushArg.articleIds).toEqual(['ahead'])
-    expect(pushArg.baseManifest).toBe(manifest)
-    // 全量实体仍要传，供 pushRemote 取正文
-    expect(pushArg.articles).toHaveLength(2)
+    const arg = (contents.pushRemote as any).mock.calls[0][0]
+    expect(arg.pushIds).toEqual(['ahead'])
+    expect(arg.treeShaByPath['kb/ahead.md']).toBe('BASE_SHA')
+    expect(arg.articles).toHaveLength(2)
   })
 
-  it('远端墓碑不触发正文 GET（删除只靠索引传播，P2 ⑤）', async () => {
-    const adapter = makeAdapter({ getLocalArticles: () => [] })
-    const manifest: Manifest = {
-      ...emptyManifest(),
-      articles: { gone: entry('gone', 999, { deleted: true }) },
-    }
+  it('本地软删除且远端有 → 发 DELETE 并清理本地墓碑（替代旧 manifest 墓碑传播）', async () => {
+    const gone: Article = { ...localArticle, id: 'gone', deleted: true }
+    const adapter = makeAdapter({ getLocalArticles: () => [gone] })
     const contents = makeContents({
-      fetchManifest: vi.fn(async () => ({ manifest, sha: 'ms' })),
-      // 真实 fetchArticles 会跳过墓碑条目，这里断言引擎不因此产生推送
-      fetchArticles: vi.fn(async () => []),
+      fetchIndex: vi.fn(async () => ({ articles: { gone: 'GONE_SHA' }, todos: {} })),
+      pushRemote: vi.fn(async (input: any): Promise<PushResult> => ({
+        conflictSlug: null,
+        shaByPath: {},
+        deletedPaths: input.delIds.map((id: string) => `kb/${id}.md`),
+      })),
     })
     const e = createSyncEngine(adapter, contents)
     const r = await e.sync()
-    expect(contents.pushRemote).not.toHaveBeenCalled()
-    expect(r.ok).toBe(true)
+    const arg = (contents.pushRemote as any).mock.calls[0][0]
+    expect(arg.delIds).toEqual(['gone'])
+    expect(arg.pushIds).toEqual([])
+    expect((adapter as any).purged).toContain('gone')
+    expect(r.deleted).toBe(1)
+    expect((adapter as any).phases).toContain('ok')
   })
 })
