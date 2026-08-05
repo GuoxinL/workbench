@@ -38,10 +38,10 @@
 - [x] 03. Implement  → [03-implement.md](./03-implement.md)
 - [x] 04. UT         → [04-ut.md](./04-ut.md)
 - [x] 05. Deploy     → [05-deploy.md](./05-deploy.md)
-- [~] 06. IT         → [06-it.md](./06-it.md) （A 类无令牌烟测随部署执行；B 类带令牌真实链路待用户 PAT）
+- [x] 06. IT         → [06-it.md](./06-it.md) （线上实测：索引/拉取/墓碑删除全链路通过；发现并修复首轮 sha 冲突裸错 Bug #10）
 - [ ] 07. Docs       → [07-docs.md](./07-docs.md)
 - [ ] 08. Review     → [08-review.md](./08-review.md)
-- [~] 09. Commit     → [09-commit.md](./09-commit.md) （随 05 推 main 合并执行）
+- [~] 09. Commit     → [09-commit.md](./09-commit.md) （随 05 推 main 合并执行；硬化修复已再推）
 
 ---
 

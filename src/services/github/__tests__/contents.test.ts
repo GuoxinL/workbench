@@ -197,6 +197,30 @@ describe('contents（目录树索引 + 每文件 sha 推送）', () => {
     expect(r.conflictSlug).toBe('kb/1.md')
   })
 
+  it('pushRemote 遇非 409 的 sha 冲突文案（如 "is at X but expected Y"）→ 仍返回 conflictSlug 自愈', async () => {
+    // 线上实测：GitHub/代理对版本冲突可能返回非 409 状态 + "is at … but expected …" 文案，
+    // 旧逻辑会裸抛 GithubError 导致「同步失败」且无法重试。硬化后应视为可重试冲突。
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: any) => {
+        if (init && init.method === 'PUT')
+          return new Response(
+            JSON.stringify({ message: 'is at abc123 but expected def456' }),
+            { status: 423 },
+          )
+        return new Response(JSON.stringify({ content: b64('x'), sha: 'new' }), { status: 200 })
+      }),
+    )
+    const articles: Article[] = [
+      { id: '1', title: 'A', content: '', fromTodo: '', tags: [], createdAt: 1, updatedAt: 1, deleted: false },
+    ]
+    const r = await pushRemote(
+      { articles, pushIds: ['1'], delIds: [], treeShaByPath: { 'kb/1.md': 'STALE' } },
+      config,
+    )
+    expect(r.conflictSlug).toBe('kb/1.md')
+  })
+
   it('serializeArticle/Todo 与 git blob sha 一致性（本地判定基石）', async () => {
     const a: Article = { id: '1', title: 'A', content: 'c', fromTodo: '', tags: [], createdAt: 1, updatedAt: 1, deleted: false }
     const t: Todo = { id: 't1', title: 'T', desc: '', color: 'blue', status: 'todo', due: '', time: 1, articleId: '', createdAt: 1, updatedAt: 1, deleted: false }

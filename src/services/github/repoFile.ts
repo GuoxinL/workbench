@@ -16,6 +16,16 @@ export class ConflictError extends Error {
   }
 }
 
+/**
+ * GitHub（或代理）对「sha / 版本不匹配」可能返回非 409/422 的状态（如 423、412，
+ * 或 409 但文案为 "is at X but expected Y" / "does not match"）。这类都应视为可重试
+ * 冲突：引擎会重列目录树取最新 sha 后自愈。否则会被当成硬错误裸抛，导致首次同步
+ * 直接报「同步失败」且无法自愈。
+ */
+export function isConflictMessage(msg: string): boolean {
+  return /does not match|but expected|conflict|out of date/i.test(msg)
+}
+
 function toBase64(str: string): string {
   const bytes = new TextEncoder().encode(str)
   let bin = ''
@@ -70,7 +80,7 @@ export async function putFileBase64(
     const { data, sha: newSha } = await githubRequest(path, { method: 'PUT', body }, config)
     return newSha ?? data?.sha ?? sha ?? ''
   } catch (e) {
-    if (e instanceof GithubError && (e.status === 409 || e.status === 422)) {
+    if (e instanceof GithubError && (e.status === 409 || e.status === 422 || isConflictMessage(e.message))) {
       throw new ConflictError(e.status === 409 ? sha : undefined)
     }
     throw e
@@ -89,6 +99,9 @@ export async function deleteFile(
     await githubRequest(path, { method: 'DELETE', body }, config)
   } catch (e) {
     if (e instanceof GithubError && e.code === 'notfound') return
+    if (e instanceof GithubError && (e.status === 409 || e.status === 422 || isConflictMessage(e.message))) {
+      throw new ConflictError(e.status === 409 ? sha : undefined)
+    }
     throw e
   }
 }
