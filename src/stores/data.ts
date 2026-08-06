@@ -19,6 +19,15 @@ import { createIndexedDBDataLayer, createImageStore } from '@/services/db'
 import { createStorageLayer } from '@/services/storage/storageLayer'
 import { createImageCloudLayer } from '@/services/image'
 
+/** 按 id upsert：把远端/合并结果并入现有集合，保留本地独有条目。
+ * applyRemote 必须用它而非整体替换——否则同步时发生一次 PULL/CONFLICT，
+ * 引擎只传回"被拉取/合并的那部分文章"，整体替换会把其余本地独有文章静默抹除（数据丢失 bug）。 */
+export function upsertById<T extends { id: string }>(existing: T[], incoming: T[]): T[] {
+  const byId = new Map(existing.map((x) => [x.id, x]))
+  for (const x of incoming) byId.set(x.id, x)
+  return Array.from(byId.values())
+}
+
 const DATA_KEY = 'wb.data.v1'
 const SYNC_STATE_KEY = 'wb.syncState.v1'
 const CFG_KEY = 'wb.cfg.v1'
@@ -349,14 +358,14 @@ export const useDataStore = defineStore('data', () => {
       }
     },
     applyRemote(remoteArticles: Article[]) {
-      data.value.articles = remoteArticles
+      data.value.articles = upsertById(data.value.articles, remoteArticles)
       persist()
-      void db.saveArticles(remoteArticles)
+      void db.saveArticles(data.value.articles)
     },
     applyRemoteTodos(remoteTodos: Todo[]) {
-      data.value.todos = remoteTodos
+      data.value.todos = upsertById(data.value.todos, remoteTodos)
       persist()
-      void db.saveTodos(remoteTodos)
+      void db.saveTodos(data.value.todos)
     },
     setPhase: (p: SyncPhase, errorMsg?: string) => {
       phase.value = p
