@@ -242,4 +242,34 @@ describe('createSyncEngine（目录树索引 + 每文件 blob sha）', () => {
     expect(r.deleted).toBe(1)
     expect((adapter as any).phases).toContain('ok')
   })
+
+  it('发生 PULL 时 applyRemote 合并而非整体替换，本地独有文章不丢失（数据丢失 bug 回归）', async () => {
+    // 本地有 [localOnly(仅本地), remote(远端有更新)]；远端只拉取 remote 这一篇。
+    // 若 applyRemote 整体替换，localOnly 会被静默抹除。正确实现应按 id 合并保留。
+    const localOnly: Article = { ...localArticle, id: 'localOnly', title: '本地独有' }
+    const remote: Article = { ...localArticle, id: 'remote', title: '远端更新', updatedAt: 100, content: 'r' }
+    const lsh = await gitBlobSha(serializeArticle(remote))
+    const articles: Article[] = [localOnly, remote]
+    const adapter = makeAdapter({
+      getLocalArticles: () => articles,
+      applyRemote: (incoming: Article[]) => {
+        const map = new Map(articles.map((x) => [x.id, x]))
+        for (const a of incoming) map.set(a.id, a)
+        articles.length = 0
+        articles.push(...map.values())
+      },
+      getSyncState: () => ({ 'kb/remote.md': lsh }),
+      setSyncState: () => {},
+    })
+    const contents = makeContents({
+      fetchIndex: vi.fn(async () => ({ articles: { remote: 'REMOTE_SHA_DIFF' }, todos: {} })),
+      fetchArticles: vi.fn(async () => [remote]),
+      pushRemote: vi.fn(async (): Promise<PushResult> => ({ conflictSlug: null, shaByPath: {}, deletedPaths: [] })),
+    })
+    const e = createSyncEngine(adapter, contents)
+    await e.sync()
+    const ids = articles.map((a) => a.id)
+    expect(ids).toContain('localOnly')
+    expect(ids).toContain('remote')
+  })
 })

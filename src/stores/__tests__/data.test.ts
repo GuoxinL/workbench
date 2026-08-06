@@ -6,7 +6,7 @@ vi.mock('@/services/sync/engine', () => ({
   createSyncEngine: () => ({ schedulePush() {}, sync() {}, startPolling() {}, stopPolling() {} }),
 }))
 
-import { useDataStore } from '@/stores/data'
+import { useDataStore, upsertById } from '@/stores/data'
 
 beforeEach(() => {
   localStorage.clear()
@@ -163,5 +163,30 @@ describe('data store —— 待办 / 知识库文章', () => {
     const s2 = useDataStore()
     expect(s2.articles.filter((n) => !n.deleted).length).toBe(0)
     expect(s2.todos.filter((tx) => !tx.deleted).length).toBe(0)
+  })
+})
+
+describe('upsertById（applyRemote 合并语义，修复数据丢失 bug）', () => {
+  it('并入传入条目，并保留本地独有条目', () => {
+    const a = { id: 'a', title: 'A' } as any
+    const b = { id: 'b', title: 'B' } as any
+    const c = { id: 'c', title: 'C' } as any
+    const out = upsertById([a, b], [c])
+    expect(out).toHaveLength(3)
+    expect(out.map((x) => x.id).sort()).toEqual(['a', 'b', 'c'])
+  })
+
+  it('同 id 时传入条目覆盖本地（远端/合并结果胜出）', () => {
+    const a = { id: 'a', title: '本地' } as any
+    const aRemote = { id: 'a', title: '远端' } as any
+    const out = upsertById([a], [aRemote])
+    expect(out).toHaveLength(1)
+    expect(out[0].title).toBe('远端')
+  })
+
+  it('空传入不删除任何本地条目（修复"整体替换致本地独有文章丢失"）', () => {
+    const a = { id: 'a' } as any
+    const b = { id: 'b' } as any
+    expect(upsertById([a, b], [])).toEqual([a, b])
   })
 })
