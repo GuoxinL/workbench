@@ -1,5 +1,5 @@
 import type { Article, Config, Todo } from '@/types'
-import { parseFrontmatter, serializeFrontmatter } from '@/lib/markdown/frontmatter'
+import { parseFrontmatter, serializeFrontmatter, type FrontmatterValue } from '@/lib/markdown/frontmatter'
 import { TodoSchema } from '@/services/db/schema'
 import { ConflictError, deleteFile, getFile, putFile, putFileBase64 } from './repoFile'
 import { GithubError } from './client'
@@ -8,19 +8,26 @@ import { arrayBufferToBase64, sha256Hex } from '@/services/image/hash'
 
 /** 把文章序列化为 `kb/<id>.md` 的正文（frontmatter + 正文），与 pushRemote 写入字节一致。 */
 export function serializeArticle(a: Article): string {
-  return serializeFrontmatter(
-    {
-      id: a.id,
-      title: a.title,
-      createdAt: a.createdAt,
-      updatedAt: a.updatedAt,
-      deleted: a.deleted,
-      fromTodo: a.fromTodo,
-      tags: a.tags,
-      publish: a.published ?? false,
-    },
-    a.content,
-  )
+  const fm: Record<string, FrontmatterValue> = {
+    id: a.id,
+    title: a.title,
+    createdAt: a.createdAt,
+    updatedAt: a.updatedAt,
+    deleted: a.deleted,
+    fromTodo: a.fromTodo,
+    tags: a.tags,
+    publish: a.published ?? false,
+  }
+  // 仅转载文章写入来源字段，避免污染原创文章文件
+  if (a.repost) {
+    fm.repost = true
+    fm.sourceAuthorized = a.sourceAuthorized ?? true
+    fm.sourceAuthor = a.sourceAuthor ?? ''
+    fm.sourceUrl = a.sourceUrl ?? ''
+    if (a.sourceSite) fm.sourceSite = a.sourceSite
+    if (a.sourcePublishedAt) fm.sourcePublishedAt = a.sourcePublishedAt
+  }
+  return serializeFrontmatter(fm, a.content)
 }
 
 /** 把待办序列化为 `todos/<id>.json`（确定性 JSON，供本地 sha 计算与远端写入共用）。 */
@@ -52,6 +59,14 @@ export async function fetchArticles(ids: string[], config: Config): Promise<Arti
       updatedAt: Number((data as any).updatedAt ?? 0),
       deleted: Boolean((data as any).deleted),
       published: Boolean((data as any).publish),
+      repost: Boolean((data as any).repost),
+      sourceAuthorized:
+        (data as any).sourceAuthorized != null ? Boolean((data as any).sourceAuthorized) : undefined,
+      sourceAuthor: (data as any).sourceAuthor != null ? String((data as any).sourceAuthor) : undefined,
+      sourceUrl: (data as any).sourceUrl != null ? String((data as any).sourceUrl) : undefined,
+      sourceSite: (data as any).sourceSite != null ? String((data as any).sourceSite) : undefined,
+      sourcePublishedAt:
+        (data as any).sourcePublishedAt != null ? Number((data as any).sourcePublishedAt) : undefined,
     })
   }
   return out

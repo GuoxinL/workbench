@@ -6,6 +6,7 @@ import { useDataStore } from '@/stores/data'
 import { useAutoSave } from '@/composables/useAutoSave'
 import { slug } from '@/lib/slug'
 import { markMissingLinks } from '@/lib/markdown/wikilink-mark'
+import { renderRepostNote } from '@/lib/markdown/repost'
 import MilkdownEditor from './MilkdownEditor.vue'
 import ArticleOutline from './ArticleOutline.vue'
 import RelatedPanel from './RelatedPanel.vue'
@@ -37,10 +38,69 @@ const draftTitle = ref('')
 const draftContent = ref('')
 const draftTags = ref<string[]>([])
 
+// ── 转载信息草稿 ──
+const draftAuthorized = ref(false)
+const draftSourceAuthor = ref('')
+const draftSourceUrl = ref('')
+const draftSourceSite = ref('')
+const draftSourceDate = ref('') // YYYY-MM-DD 输入框值
+
+/** 授权闸门 + 必填项齐全 → 才标记为转载 */
+const repostActive = computed(
+  () => draftAuthorized.value && draftSourceAuthor.value.trim() !== '' && draftSourceUrl.value.trim() !== '',
+)
+
+/** 当前转载字段（已规整）用于声明块渲染 */
+const repostNoteHtml = computed(() =>
+  renderRepostNote({
+    repost: repostActive.value,
+    sourceAuthorized: draftAuthorized.value,
+    sourceAuthor: draftSourceAuthor.value,
+    sourceUrl: draftSourceUrl.value,
+    sourceSite: draftSourceSite.value,
+    sourcePublishedAt: fromDateInput(draftSourceDate.value),
+  }),
+)
+
+function toDateInput(ms: number): string {
+  const d = new Date(ms)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+function fromDateInput(s: string): number | undefined {
+  if (!s) return undefined
+  const t = new Date(s + 'T00:00:00').getTime()
+  return Number.isNaN(t) ? undefined : t
+}
+
 function isDirty(): boolean {
   const a = props.article
   if (!a) return false
-  return a.title !== draftTitle.value.trim() || a.content !== draftContent.value || JSON.stringify(a.tags) !== JSON.stringify(draftTags.value)
+  const sameRepost =
+    !!a.repost === repostActive.value &&
+    (a.sourceAuthor || '') === draftSourceAuthor.value.trim() &&
+    (a.sourceUrl || '') === draftSourceUrl.value.trim() &&
+    (a.sourceSite || '') === draftSourceSite.value.trim() &&
+    (a.sourcePublishedAt ?? undefined) === fromDateInput(draftSourceDate.value)
+  return (
+    a.title !== draftTitle.value.trim() ||
+    a.content !== draftContent.value ||
+    JSON.stringify(a.tags) !== JSON.stringify(draftTags.value) ||
+    !sameRepost
+  )
+}
+
+/** 授权复选框：取消勾选则清空来源字段（落实「未授权不可转载」） */
+function onAuthorizeChange(v: boolean | string | number) {
+  const checked = !!v
+  draftAuthorized.value = checked
+  if (!checked) {
+    draftSourceAuthor.value = ''
+    draftSourceUrl.value = ''
+    draftSourceSite.value = ''
+    draftSourceDate.value = ''
+  }
+  schedule()
 }
 
 watch(
@@ -50,6 +110,11 @@ watch(
       draftTitle.value = props.article.title
       draftContent.value = props.article.content
       draftTags.value = [...props.article.tags]
+      draftAuthorized.value = !!props.article.sourceAuthorized
+      draftSourceAuthor.value = props.article.sourceAuthor || ''
+      draftSourceUrl.value = props.article.sourceUrl || ''
+      draftSourceSite.value = props.article.sourceSite || ''
+      draftSourceDate.value = props.article.sourcePublishedAt ? toDateInput(props.article.sourcePublishedAt) : ''
     }
   },
   { immediate: true },
@@ -82,6 +147,12 @@ function doSave() {
     title: draftTitle.value.trim(),
     content: draftContent.value,
     tags: [...draftTags.value],
+    repost: repostActive.value || undefined,
+    sourceAuthorized: repostActive.value ? true : undefined,
+    sourceAuthor: draftSourceAuthor.value.trim() || undefined,
+    sourceUrl: draftSourceUrl.value.trim() || undefined,
+    sourceSite: draftSourceSite.value.trim() || undefined,
+    sourcePublishedAt: fromDateInput(draftSourceDate.value),
   })
   if (affected > 0) ElMessage.success(`已联动更新 ${affected} 篇引用`)
   emit('changed')
@@ -333,10 +404,29 @@ const fromTodoTitle = computed(() => {
         <span v-if="fromTodoTitle">源自待办：{{ fromTodoTitle }}</span>
       </div>
 
+      <div v-if="repostNoteHtml" class="repost-note" v-html="repostNoteHtml"></div>
+
       <div class="tags">
         <span v-for="t in draftTags" :key="t" class="tag" :style="{ background: tagColor(t) }" @click="removeTag(t)">{{ t }} ×</span>
         <input v-model="tagInput" class="tag-input" placeholder="加标签回车" @keydown.enter.prevent="addTag(tagInput)" />
       </div>
+
+      <details class="repost-box">
+        <summary>转载信息</summary>
+        <div class="repost-form">
+          <label class="auth-row">
+            <el-checkbox :model-value="draftAuthorized" @change="onAuthorizeChange" />
+            <span>我已获得原作者授权，确认可转载（必选）</span>
+          </label>
+          <div v-if="draftAuthorized" class="fields">
+            <label>原作者 *<input v-model="draftSourceAuthor" class="rf" placeholder="原作者姓名" @input="schedule" /></label>
+            <label>原链接 *<input v-model="draftSourceUrl" class="rf" placeholder="https://..." @input="schedule" /></label>
+            <label>来源平台<input v-model="draftSourceSite" class="rf" placeholder="微信公众号 / 知乎 / 博客" @input="schedule" /></label>
+            <label>原文发布<input type="date" v-model="draftSourceDate" class="rf" @change="schedule" /></label>
+            <p class="hint muted">* 必填。未获授权不可转载；保存时校验原作者与原链接。</p>
+          </div>
+        </div>
+      </details>
 
       <details class="help">
         <summary>Markdown 语法帮助</summary>
@@ -534,6 +624,47 @@ const fromTodoTitle = computed(() => {
   align-items: center;
   margin-bottom: 8px;
 }
+
+/* 转载声明横幅 */
+.repost-note {
+  border-left: 3px solid var(--brand);
+  background: var(--brand-weak);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.repost-note :deep(p) {
+  margin: 2px 0;
+}
+
+/* 转载信息表单 */
+.repost-box {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card-bg);
+  padding: 4px 12px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.repost-box summary { cursor: pointer; color: var(--muted); font-weight: 600; padding: 4px 0; }
+.repost-form { padding: 4px 0 8px; }
+.auth-row { display: flex; align-items: center; gap: 8px; }
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.fields label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.rf {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  outline: none;
+  background: var(--bg);
+  color: var(--fg);
+}
+.rf:focus { border-color: var(--brand); }
+.hint { font-size: 12px; grid-column: 1 / -1; margin: 0; }
+
 .tag {
   color: #fff;
   font-size: 12px;

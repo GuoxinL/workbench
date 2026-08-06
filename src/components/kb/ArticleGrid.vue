@@ -7,6 +7,7 @@ import { extractExcerpt, extractFirstImage, safeImageUrl } from '@/lib/markdown/
 import { COLOR_MAP } from '@/lib/colors'
 import TagCloud from './TagCloud.vue'
 import Pagination from '@/components/common/Pagination.vue'
+import RepostImport from './RepostImport.vue'
 
 const emit = defineEmits<{ select: [string]; create: [] }>()
 const store = useDataStore()
@@ -19,11 +20,15 @@ const graph = computed(() => buildGraph(store.articles))
 const outCount = (id: string) => graph.value.out.get(id)?.size ?? 0
 const inCount = (id: string) => graph.value.in.get(id)?.size ?? 0
 
+// 仅转载筛选
+const onlyRepost = ref(false)
+
 const list = computed(() => {
   const k = query.value.trim().toLowerCase()
   const tg = activeTag.value
   return store.articles
     .filter((n) => !n.deleted)
+    .filter((n) => (onlyRepost.value ? !!n.repost : true))
     .filter((n) => (k === '' ? true : n.title.toLowerCase().includes(k) || n.content.toLowerCase().includes(k)))
     .filter((n) => (tg === ALL_TAG ? true : n.tags.includes(tg)))
     .sort((a, b) => b.updatedAt - a.updatedAt)
@@ -77,7 +82,9 @@ function onTagClick(tag: string) {
     <!-- 顶栏 -->
     <div class="bar">
       <input v-model="q" class="search" type="search" placeholder="搜索文章…" />
+      <RepostImport @imported="(id) => emit('select', id)" />
       <button class="new-btn" @click="emit('create')">＋ 新建</button>
+      <button class="filter-btn" :class="{ on: onlyRepost }" @click="onlyRepost = !onlyRepost">仅转载</button>
     </div>
 
     <TagCloud v-if="tagStats.length" :tags="tagStats" :active="activeTag" @select="onTagClick" />
@@ -88,7 +95,10 @@ function onTagClick(tag: string) {
       <div v-if="featured" class="hero" @click="emit('select', featured.id)">
         <img v-if="cover(featured.content)" class="hero-img" :src="cover(featured.content)!" alt="" />
         <div class="hero-body">
-          <div class="hero-title">{{ featured.title }}</div>
+          <div class="hero-title">
+            {{ featured.title }}
+            <span v-if="featured.repost" class="badge-repost">转载</span>
+          </div>
           <div class="hero-tags" v-if="featured.tags.length">
             <span v-for="t in featured.tags.slice(0, 4)" :key="t" class="tag" :style="{ background: COLOR_MAP[t as keyof typeof COLOR_MAP]?.hex || '#64748b' }">{{ t }}</span>
           </div>
@@ -114,7 +124,10 @@ function onTagClick(tag: string) {
             <div v-else class="no-img">{{ n.title.charAt(0) }}</div>
           </div>
           <div class="card-body">
-            <div class="card-title">{{ n.title }}</div>
+            <div class="card-title">
+              {{ n.title }}
+              <span v-if="n.repost" class="badge-repost">转载</span>
+            </div>
             <div class="card-tags" v-if="n.tags.length">
               <span v-for="t in n.tags.slice(0, 3)" :key="t" class="tag sm" :style="{ background: COLOR_MAP[t as keyof typeof COLOR_MAP]?.hex || '#64748b' }">{{ t }}</span>
             </div>
@@ -175,6 +188,37 @@ function onTagClick(tag: string) {
 }
 .new-btn:hover {
   background: var(--brand-strong);
+}
+
+.filter-btn {
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 14px;
+  flex: none;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.filter-btn:hover {
+  border-color: var(--brand);
+}
+.filter-btn.on {
+  border-color: var(--brand);
+  color: #fff;
+  background: var(--brand);
+}
+
+.badge-repost {
+  font-size: 10px;
+  color: #fff;
+  background: var(--c-teal, #14b8a6);
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  vertical-align: middle;
+  flex: none;
 }
 
 .empty { text-align: center; padding: 60px 0; font-size: 14px; }

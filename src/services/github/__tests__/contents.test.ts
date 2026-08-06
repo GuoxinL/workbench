@@ -228,4 +228,65 @@ describe('contents（目录树索引 + 每文件 sha 推送）', () => {
     expect(serializeArticle(a)).toBe(serializeArticle(a))
     expect(serializeTodo(t)).toBe(serializeTodo(t))
   })
+
+  it('serializeArticle：转载文章写入来源字段（含 sourceAuthorized）', () => {
+    const a: Article = {
+      id: '1', title: 'A', content: 'c', fromTodo: '', tags: [],
+      createdAt: 1, updatedAt: 1, deleted: false,
+      repost: true, sourceAuthorized: true, sourceAuthor: '张三',
+      sourceUrl: 'https://blog.example.com/p/1', sourceSite: '示例博客',
+      sourcePublishedAt: 1768452000000,
+    }
+    const out = serializeArticle(a)
+    expect(out).toContain('repost: true')
+    expect(out).toContain('sourceAuthorized: true')
+    expect(out).toContain('sourceAuthor: "张三"')
+    expect(out).toContain('sourceUrl: "https://blog.example.com/p/1"')
+    expect(out).toContain('sourceSite: "示例博客"')
+    expect(out).toContain('sourcePublishedAt: 1768452000000')
+    // 两次序列化稳定（sha 判定基石）
+    expect(serializeArticle(a)).toBe(out)
+  })
+
+  it('serializeArticle：原创文章不写转载字段', () => {
+    const a: Article = { id: '1', title: 'A', content: 'c', fromTodo: '', tags: [], createdAt: 1, updatedAt: 1, deleted: false }
+    const out = serializeArticle(a)
+    expect(out).not.toContain('repost')
+    expect(out).not.toContain('sourceAuthor')
+  })
+
+  it('fetchArticles：解析往返转载字段', async () => {
+    const body = [
+      '---',
+      'id: "1"',
+      'title: "A"',
+      'createdAt: 1',
+      'updatedAt: 1',
+      'deleted: false',
+      'fromTodo: ""',
+      'tags: []',
+      'publish: false',
+      'repost: true',
+      'sourceAuthorized: true',
+      'sourceAuthor: "张三"',
+      'sourceUrl: "https://blog.example.com/p/1"',
+      'sourceSite: "示例博客"',
+      'sourcePublishedAt: 1768452000000',
+      '---',
+      '正文',
+    ].join('\n')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ content: b64(body), sha: 's1' }), { status: 200, headers: { etag: 's1' } })),
+    )
+    const articles = await fetchArticles(['1'], config)
+    expect(articles).toHaveLength(1)
+    const got = articles[0]
+    expect(got.repost).toBe(true)
+    expect(got.sourceAuthorized).toBe(true)
+    expect(got.sourceAuthor).toBe('张三')
+    expect(got.sourceUrl).toBe('https://blog.example.com/p/1')
+    expect(got.sourceSite).toBe('示例博客')
+    expect(got.sourcePublishedAt).toBe(1768452000000)
+  })
 })

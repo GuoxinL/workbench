@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { parseFrontmatter } from '@/lib/markdown/frontmatter'
 import { renderMarkdown } from '@/lib/markdown'
+import { buildRepostNote } from '@/lib/markdown/repost'
 import { useDataStore } from '@/stores/data'
 
 const route = useRoute()
@@ -48,9 +49,18 @@ onMounted(async () => {
     createdAt.value = Number(data.createdAt ?? 0)
     // P2 ⑥ 渲染端：git 图片 key（`images/<sha>`）同步改写为 raw 直链；
     // 本地 key（`local-img:<sha>`）阅读端无作者 IDB，原样保留（破图属预期，本地图不跨端）。
-    const branch = store.getConfig().branch || 'main'
-    const repo = publicRepo.value
-    html.value = renderMarkdown(content, {
+    // 转载声明块：从 frontmatter 读取来源字段并追加到正文末尾（已获授权署名）
+    const repost = {
+      repost: Boolean((data as any).repost),
+      sourceAuthorized: (data as any).sourceAuthorized != null ? Boolean((data as any).sourceAuthorized) : undefined,
+      sourceAuthor: (data as any).sourceAuthor != null ? String((data as any).sourceAuthor) : undefined,
+      sourceUrl: (data as any).sourceUrl != null ? String((data as any).sourceUrl) : undefined,
+      sourceSite: (data as any).sourceSite != null ? String((data as any).sourceSite) : undefined,
+      sourcePublishedAt: (data as any).sourcePublishedAt != null ? Number((data as any).sourcePublishedAt) : undefined,
+    }
+    const note = buildRepostNote(repost)
+    const full = note ? `${content}\n\n${note}` : content
+    html.value = renderMarkdown(full, {
       resolveImage: (key: string) => {
         if (repo && key.startsWith('images/')) {
           return `https://raw.githubusercontent.com/${repo}/${branch}/${key}`
