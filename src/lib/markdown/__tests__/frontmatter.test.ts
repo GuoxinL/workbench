@@ -62,4 +62,27 @@ describe('serializeFrontmatter', () => {
     const round = parseFrontmatter(serializeFrontmatter(fm, 'hello')).data
     expect(round).toEqual(fm)
   })
+
+  it('转载字段可往返（repost/sourceAuthorized/来源标量）', () => {
+    const fm = {
+      repost: true,
+      sourceAuthorized: true,
+      sourceAuthor: '张三',
+      sourceUrl: 'https://blog.example.com/p/1',
+      sourceSite: '示例博客',
+      sourcePublishedAt: 1768452000000,
+    }
+    const round = parseFrontmatter(serializeFrontmatter(fm, '正文')).data
+    expect(round.repost).toBe(true)
+    expect(round.sourceAuthorized).toBe(true)
+    expect(round.sourceAuthor).toBe('张三')
+    expect(round.sourceUrl).toBe('https://blog.example.com/p/1')
+    expect(round.sourceSite).toBe('示例博客')
+    expect(round.sourcePublishedAt).toBe(1768452000000)
+  })
+
+  it('serializeFrontmatter 会原样写出传入的字段（repost:false 也会写出）', () => {
+    const out = serializeFrontmatter({ title: '原创', repost: false }, '正文')
+    expect(out).toContain('repost: false')
+  })
 })

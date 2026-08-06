@@ -26,6 +26,13 @@ export interface Article {
   updatedAt: number
   deleted: boolean // 软删除墓碑
   published?: boolean // 是否发布到公开镜像库（只读分享）
+  // ── 转载信息（原创文章这些字段为空/省略）──
+  repost?: boolean // 是否转载 = sourceAuthorized && 来源必填项已填
+  sourceAuthorized?: boolean // 授权闸门：是否已获原作者授权/确认可转载（必选才能转载）
+  sourceAuthor?: string // 被转载文章的人（原作者），必填当 repost=true
+  sourceUrl?: string // 原链接，必填当 repost=true
+  sourceSite?: string // 来源平台/媒体名（微信公众号/知乎/博客…），可选
+  sourcePublishedAt?: number // 原文发布时间 ms，可选
 }
 
 /** 仅存本地，永不上传 */
